@@ -10,11 +10,19 @@ const store = useAppStore()
 const addOpen = ref(false)
 const removeTarget = ref<TokenRecord | null>(null)
 const cancelTarget = ref<TokenRecord | null>(null)
+const usedTarget = ref<TokenRecord | null>(null)
+const usedReading = ref('')
+const usedError = ref('')
+const usedSaving = ref(false)
 const revealed = ref<{ id: string; code: string } | null>(null)
 const busy = ref('')
 
 useFocusReturn(
-  () => removeTarget.value != null || cancelTarget.value != null || revealed.value != null,
+  () =>
+    removeTarget.value != null ||
+    cancelTarget.value != null ||
+    usedTarget.value != null ||
+    revealed.value != null,
 )
 
 const tokens = computed(() =>
@@ -48,12 +56,29 @@ async function confirmRemove() {
   await store.removeToken(id).catch(() => {})
 }
 
-async function markUsed(token: TokenRecord) {
-  busy.value = token.id
+function openUsed(token: TokenRecord) {
+  usedTarget.value = token
+  usedReading.value = String(
+    Number(((store.latest?.reading ?? 0) + token.kwh).toFixed(2)),
+  )
+  usedError.value = ''
+}
+
+async function confirmUsed() {
+  if (!usedTarget.value) return
+  const value = Number(usedReading.value.replace(',', '.'))
+  if (!Number.isFinite(value) || value < 0) {
+    usedError.value = 'Angka sisa harus 0 atau lebih.'
+    return
+  }
+  usedSaving.value = true
   try {
-    await store.markTokenUsed(token.id)
+    await store.markTokenUsed(usedTarget.value.id, value)
+    usedTarget.value = null
+  } catch (caught) {
+    usedError.value = caught instanceof Error ? caught.message : 'Gagal menandai token.'
   } finally {
-    busy.value = ''
+    usedSaving.value = false
   }
 }
 
@@ -179,7 +204,7 @@ async function reveal(token: TokenRecord) {
             variant="text"
             size="small"
             :loading="busy === token.id"
-            @click="markUsed(token)"
+            @click="openUsed(token)"
           >
             Tandai terpakai
           </v-btn>
@@ -244,6 +269,49 @@ async function reveal(token: TokenRecord) {
           <v-btn variant="text" @click="removeTarget = null">Batal</v-btn>
           <v-btn color="error" variant="flat" @click="confirmRemove">Hapus</v-btn>
         </v-card-actions>
+      </v-card>
+    </v-dialog>
+
+    <v-dialog
+      :model-value="usedTarget != null"
+      max-width="480"
+      aria-labelledby="used-token-title"
+      @update:model-value="usedTarget = null"
+    >
+      <v-card class="dialog-card">
+        <div class="dialog-head">
+          <div>
+            <h2 id="used-token-title">Tandai token terpakai</h2>
+            <p>Masukkan sisa kWh pada meter setelah token dimasukkan.</p>
+          </div>
+        </div>
+        <v-card-text>
+          <p v-if="usedTarget" class="confirm-copy">
+            Token {{ formatKwh(usedTarget.kwh) }} kWh. Catatan terakhir
+            {{ store.latest ? `${formatKwh(store.latest.reading)} kWh` : 'belum ada' }}.
+          </p>
+          <v-form @submit.prevent="confirmUsed">
+            <v-text-field
+              v-model="usedReading"
+              label="Sisa kWh setelah token"
+              suffix="kWh"
+              inputmode="decimal"
+              autofocus
+              class="field"
+              hint="Isi bawaan = catatan terakhir + kWh token."
+              persistent-hint
+            />
+            <v-alert v-if="usedError" type="error" density="compact" class="form-alert">
+              {{ usedError }}
+            </v-alert>
+            <div class="dialog-actions">
+              <v-btn variant="text" @click="usedTarget = null">Batal</v-btn>
+              <v-btn type="submit" color="primary" variant="flat" :loading="usedSaving">
+                Tandai terpakai
+              </v-btn>
+            </div>
+          </v-form>
+        </v-card-text>
       </v-card>
     </v-dialog>
 
