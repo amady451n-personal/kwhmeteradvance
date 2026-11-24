@@ -1,0 +1,7 @@
+# Image dasar yang SUDAH ADA di Docker WSL dan dipakai bersama proyek lain.
+# Jangan dihapus oleh scripts/dev-images.sh.
+# format: ref | kegunaan
+
+node:24.22.3-alpine | dev server Vite + build frontend
+golang:1.25.14-alpine | build backend Go
+gcr.io/distroless/static-debian12:nonroot | runtime image final (Go static)

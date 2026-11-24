@@ -1,0 +1,16 @@
+services:
+  web:
+    image: node:24.22.3-alpine
+    working_dir: /app
+    command: sh -c "npm install && npm run dev -- --host 0.0.0.0"
+    ports:
+      - "5173:5173"
+    volumes:
+      - ./frontend:/app
+      - meteran_node_modules:/app/node_modules
+      - ./docs/api:/docs/api:ro
+    environment:
+      CHOKIDAR_USEPOLLING: "true"
+
+volumes:
+  meteran_node_modules:

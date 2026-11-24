@@ -1,0 +1,1844 @@
+openapi: 3.1.0
+info:
+  title: meteran API
+  version: 0.1.0
+  description: |
+    Kontrak otoritatif untuk aplikasi pencatat meteran PLN prabayar.
+    Satu konsumen (web app Vue), satu provider (backend Go, belum dibuat).
+
+    Aturan umum:
+    - Sukses: `{ "data": ... }` dengan `meta`/`links` bila relevan.
+    - Gagal: `{ "error": { "code", "message", "details"? } }` dengan status HTTP semantik.
+    - Pengecualian bentuk: `GET /api/homepage` (bentuk tetap FR-111) dan
+      `GET /api/reports/summary.pdf` (biner).
+    - Semua timestamp ISO 8601 dengan offset `+07:00`. Server menerima `Z`,
+      selalu membalas `+07:00`. Zona tetap `Asia/Jakarta`.
+    - Semua ID adalah string opaque (ULID). Klien boleh membuat ID sendiri
+      agar `PUT` bersifat upsert idempoten untuk replay antrean offline.
+    - Klien wajib toleran terhadap nilai enum baru.
+servers:
+  - url: /
+security:
+  - cookieAuth: []
+tags:
+  - name: meta
+  - name: session
+  - name: readings
+  - name: usage
+  - name: summary
+  - name: tokens
+  - name: settings
+  - name: reports
+  - name: import
+  - name: push
+  - name: homepage
+
+paths:
+  /api/health:
+    get:
+      tags: [meta]
+      summary: Status server
+      security: []
+      responses:
+        '200':
+          description: Server hidup
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data]
+                properties:
+                  data:
+                    $ref: '#/components/schemas/Health'
+        default:
+          $ref: '#/components/responses/Error'
+
+  /api/session:
+    get:
+      tags: [session]
+      summary: Status sesi dan PIN
+      security: []
+      responses:
+        '200':
+          description: Status sesi saat ini
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data]
+                properties:
+                  data:
+                    $ref: '#/components/schemas/SessionState'
+        default:
+          $ref: '#/components/responses/Error'
+    post:
+      tags: [session]
+      summary: Buka sesi dengan PIN
+      description: |
+        Maksimal 5 percobaan per 15 menit per IP. Balasan 429 menyertakan
+        header `Retry-After` dalam detik.
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SessionCreate'
+      responses:
+        '204':
+          description: Sesi dibuat, cookie `meteran_session` di-set
+        '401':
+          $ref: '#/components/responses/PinInvalid'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+        default:
+          $ref: '#/components/responses/Error'
+    delete:
+      tags: [session]
+      summary: Akhiri sesi
+      responses:
+        '204':
+          description: Sesi dihapus
+        default:
+          $ref: '#/components/responses/Error'
+
+  /api/session/pin:
+    put:
+      tags: [session]
+      summary: Atur atau ganti PIN
+      description: |
+        Instalasi baru: `pinSet` masih false, `currentPin` tidak diperlukan dan
+        sesi belum ada, jadi endpoint ini boleh dipanggil tanpa sesi.
+        Setelah PIN ada: wajib sesi aktif dan `currentPin` yang benar, jika
+        tidak server membalas 401. Percobaan salah mengikuti rate limit PIN.
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PinUpdate'
+      responses:
+        '204':
+          description: PIN tersimpan
+        '401':
+          $ref: '#/components/responses/PinInvalid'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+        default:
+          $ref: '#/components/responses/Error'
+
+  /api/readings:
+    get:
+      tags: [readings]
+      summary: Daftar pembacaan
+      parameters:
+        - $ref: '#/components/parameters/FromDate'
+        - $ref: '#/components/parameters/ToDate'
+        - $ref: '#/components/parameters/Limit'
+        - $ref: '#/components/parameters/Cursor'
+      responses:
+        '200':
+          description: Halaman pembacaan, terbaru lebih dulu
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/ReadingPage'
+        default:
+          $ref: '#/components/responses/Error'
+    post:
+      tags: [readings]
+      summary: Catat pembacaan baru
+      description: |
+        Pelanggaran lunak dibalas 409 `confirmation_required` dengan
+        `details[].code` berisi `increased_without_topup` atau
+        `duplicate_timestamp`. Kirim ulang dengan `confirm` berisi kode yang
+        disetujui. Timestamp masa depan dan kWh negatif dibalas 422.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ReadingInput'
+      responses:
+        '201':
+          description: Pembacaan tersimpan
+          headers:
+            Location:
+              schema:
+                type: string
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data]
+                properties:
+                  data:
+                    $ref: '#/components/schemas/Reading'
+        '409':
+          $ref: '#/components/responses/ConfirmationRequired'
+        '422':
+          $ref: '#/components/responses/ValidationFailed'
+        default:
+          $ref: '#/components/responses/Error'
+
+  /api/readings/{id}:
+    parameters:
+      - $ref: '#/components/parameters/ResourceId'
+    get:
+      tags: [readings]
+      summary: Satu pembacaan
+      responses:
+        '200':
+          description: Pembacaan
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data]
+                properties:
+                  data:
+                    $ref: '#/components/schemas/Reading'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        default:
+          $ref: '#/components/responses/Error'
+    put:
+      tags: [readings]
+      summary: Upsert pembacaan (idempoten)
+      description: |
+        Dipakai untuk membuat maupun memperbarui, termasuk replay antrean
+        offline. ID berasal dari klien. Mengulang payload yang sama tidak
+        mengubah hasil. Pembacaan yang tertaut token terkunci dibalas 409
+        `reading_locked`.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ReadingInput'
+      responses:
+        '200':
+          description: Pembacaan hasil upsert
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data]
+                properties:
+                  data:
+                    $ref: '#/components/schemas/Reading'
+        '409':
+          $ref: '#/components/responses/ConfirmationRequired'
+        '422':
+          $ref: '#/components/responses/ValidationFailed'
+        default:
+          $ref: '#/components/responses/Error'
+    delete:
+      tags: [readings]
+      summary: Hapus pembacaan
+      description: |
+        Pembacaan yang tertaut token terkunci tidak dapat dihapus. Menghapus
+        pembacaan yang tertaut token belum terkunci mengembalikan token itu ke
+        `unused` (sama dengan FR-13 langkah 4).
+      responses:
+        '204':
+          description: Terhapus
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          description: Pembacaan terkunci
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                error:
+                  code: reading_locked
+                  message: Pembacaan tertaut token terkunci dan tidak dapat dihapus.
+        default:
+          $ref: '#/components/responses/Error'
+
+  /api/usage:
+    get:
+      tags: [usage]
+      summary: Pemakaian teragregasi
+      description: |
+        Hari tanpa pembacaan sendiri ditandai estimasi (FR-22). Minggu
+        dihitung Senin sampai Minggu, bulan mengikuti kalender (FR-23).
+      parameters:
+        - $ref: '#/components/parameters/FromDate'
+        - $ref: '#/components/parameters/ToDate'
+        - name: group
+          in: query
+          required: false
+          schema:
+            type: string
+            enum: [day, week, month]
+            default: day
+        - $ref: '#/components/parameters/Limit'
+        - $ref: '#/components/parameters/Cursor'
+      responses:
+        '200':
+          description: Bucket pemakaian
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UsagePage'
+        default:
+          $ref: '#/components/responses/Error'
+
+  /api/summary:
+    get:
+      tags: [summary]
+      summary: Ringkasan kanonis
+      description: |
+        Sumber kebenaran untuk angka yang ditampilkan (FR-96). Klien boleh
+        menghitung lokal untuk tampilan instan, tetapi hasil server menggantikan
+        nilai sementara setelah sinkronisasi.
+      parameters:
+        - name: window
+          in: query
+          required: false
+          schema:
+            type: integer
+            enum: [7, 14, 30]
+            default: 7
+        - $ref: '#/components/parameters/FromDate'
+        - $ref: '#/components/parameters/ToDate'
+      responses:
+        '200':
+          description: Ringkasan
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data]
+                properties:
+                  data:
+                    $ref: '#/components/schemas/Summary'
+        default:
+          $ref: '#/components/responses/Error'
+
+  /api/tokens:
+    get:
+      tags: [tokens]
+      summary: Daftar token
+      description: Kode token tidak pernah ikut di daftar. Gunakan endpoint reveal.
+      parameters:
+        - name: status
+          in: query
+          required: false
+          schema:
+            type: string
+            enum: [unused, used, locked]
+        - $ref: '#/components/parameters/Limit'
+        - $ref: '#/components/parameters/Cursor'
+      responses:
+        '200':
+          description: Halaman token
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TokenPage'
+        default:
+          $ref: '#/components/responses/Error'
+    post:
+      tags: [tokens]
+      summary: Catat token baru
+      description: |
+        `code` wajib untuk input manual. Nominal dihitung server dari daftar
+        denominasi; bila di luar toleransi ±10% atau daftar kosong, `denomination`
+        bernilai null dan `denominationMismatch` true (FR-14).
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/TokenCreate'
+      responses:
+        '201':
+          description: Token tersimpan
+          headers:
+            Location:
+              schema:
+                type: string
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data]
+                properties:
+                  data:
+                    $ref: '#/components/schemas/Token'
+        '409':
+          $ref: '#/components/responses/ConfirmationRequired'
+        '422':
+          $ref: '#/components/responses/ValidationFailed'
+        default:
+          $ref: '#/components/responses/Error'
+
+  /api/tokens/{id}:
+    parameters:
+      - $ref: '#/components/parameters/ResourceId'
+    get:
+      tags: [tokens]
+      summary: Satu token
+      responses:
+        '200':
+          description: Token
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data]
+                properties:
+                  data:
+                    $ref: '#/components/schemas/Token'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        default:
+          $ref: '#/components/responses/Error'
+    put:
+      tags: [tokens]
+      summary: Upsert token (idempoten)
+      description: Dipakai untuk membuat maupun memperbarui, termasuk replay offline.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/TokenUpsert'
+      responses:
+        '200':
+          description: Token hasil upsert
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data]
+                properties:
+                  data:
+                    $ref: '#/components/schemas/Token'
+        '409':
+          $ref: '#/components/responses/ConfirmationRequired'
+        '422':
+          $ref: '#/components/responses/ValidationFailed'
+        default:
+          $ref: '#/components/responses/Error'
+    patch:
+      tags: [tokens]
+      summary: Ubah token sebelum terkunci
+      description: |
+        Hanya `type`, `denomination`, `notes`, dan `purchasedAt` yang dapat
+        diubah. Token berstatus `locked` dibalas 409 `token_locked`.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/TokenPatch'
+      responses:
+        '200':
+          description: Token setelah diubah
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data]
+                properties:
+                  data:
+                    $ref: '#/components/schemas/Token'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '422':
+          $ref: '#/components/responses/ValidationFailed'
+        default:
+          $ref: '#/components/responses/Error'
+    delete:
+      tags: [tokens]
+      summary: Hapus token historis
+      description: |
+        Hanya token `locked` yang memenuhi syarat 50 pengisian (FR-13) boleh
+        dihapus; server mengirim `canDelete` pada resource. Ringkasan kWh,
+        biaya, dan tanggal tetap disimpan sebagai catatan historis.
+      responses:
+        '204':
+          description: Terhapus
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          description: Token belum memenuhi syarat hapus
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                error:
+                  code: token_not_deletable
+                  message: Token baru dapat dihapus setelah 50 pengisian berikutnya.
+        default:
+          $ref: '#/components/responses/Error'
+
+  /api/tokens/{id}/mark-used:
+    parameters:
+      - $ref: '#/components/parameters/ResourceId'
+    post:
+      tags: [tokens]
+      summary: Tandai token dipakai dan catat sisa kWh sesudahnya
+      description: |
+        Sesuai FR-13 langkah 2. Server membuat pembacaan tertaut ke token dan
+        mengubah status token menjadi `used`. Token `locked` dibalas 409.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/TokenMarkUsed'
+      responses:
+        '200':
+          description: Token dan pembacaan tertaut
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data]
+                properties:
+                  data:
+                    $ref: '#/components/schemas/TokenMarkUsedResult'
+        '409':
+          $ref: '#/components/responses/ConfirmationRequired'
+        '422':
+          $ref: '#/components/responses/ValidationFailed'
+        default:
+          $ref: '#/components/responses/Error'
+
+  /api/tokens/{id}/cancel:
+    parameters:
+      - $ref: '#/components/parameters/ResourceId'
+    post:
+      tags: [tokens]
+      summary: Batalkan pemakaian token
+      description: |
+        Mengembalikan token ke `unused` dan membatalkan pembacaan tertaut
+        (FR-13 langkah 4). Token `locked` dibalas 409 `token_locked`.
+      responses:
+        '200':
+          description: Token setelah dibatalkan
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data]
+                properties:
+                  data:
+                    $ref: '#/components/schemas/TokenCancelResult'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        default:
+          $ref: '#/components/responses/Error'
+
+  /api/tokens/{id}/reveal:
+    parameters:
+      - $ref: '#/components/parameters/ResourceId'
+    post:
+      tags: [tokens]
+      summary: Tampilkan kode token
+      description: |
+        Kode disimpan terenkripsi dan hanya dikirim lewat endpoint ini
+        (FR-11). Respons wajib `Cache-Control: no-store`. Tindakan dicatat
+        di log server.
+      responses:
+        '200':
+          description: Kode token
+          headers:
+            Cache-Control:
+              schema:
+                type: string
+                const: no-store
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data]
+                properties:
+                  data:
+                    $ref: '#/components/schemas/TokenCode'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        default:
+          $ref: '#/components/responses/Error'
+
+  /api/settings:
+    get:
+      tags: [settings]
+      summary: Pengaturan
+      responses:
+        '200':
+          description: Pengaturan saat ini
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data]
+                properties:
+                  data:
+                    $ref: '#/components/schemas/Settings'
+        default:
+          $ref: '#/components/responses/Error'
+    patch:
+      tags: [settings]
+      summary: Ubah pengaturan
+      description: Field yang tidak dikirim tidak berubah. `denominations` menggantikan seluruh daftar.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SettingsPatch'
+      responses:
+        '200':
+          description: Pengaturan setelah diubah
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data]
+                properties:
+                  data:
+                    $ref: '#/components/schemas/Settings'
+        '422':
+          $ref: '#/components/responses/ValidationFailed'
+        default:
+          $ref: '#/components/responses/Error'
+
+  /api/reports/summary.pdf:
+    get:
+      tags: [reports]
+      summary: Laporan PDF
+      description: |
+        Dibuat server (FR-70). Isi mengikuti FR-71: tanggal laporan, sisa kWh
+        terakhir, pemakaian hari ini, prediksi sentuh buffer, estimasi harga
+        per kWh, dan 10 pembacaan terakhir tanpa baris top-up.
+      parameters:
+        - $ref: '#/components/parameters/FromDate'
+        - $ref: '#/components/parameters/ToDate'
+      responses:
+        '200':
+          description: Berkas PDF
+          headers:
+            Content-Disposition:
+              schema:
+                type: string
+              example: attachment; filename="meteran-2026-11.pdf"
+          content:
+            application/pdf:
+              schema:
+                type: string
+                format: binary
+        default:
+          $ref: '#/components/responses/Error'
+
+  /api/import/preview:
+    post:
+      tags: [import]
+      summary: Pratinjau impor SQLite lama
+      description: |
+        Hanya aktif bila database baru masih kosong (FR-100). Respons
+        mengelompokkan baris menjadi valid, perlu konfirmasi, dan ditolak
+        (FR-104). Pratinjau kedaluwarsa pada `expiresAt`.
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required: [file]
+              properties:
+                file:
+                  type: string
+                  format: binary
+      responses:
+        '200':
+          description: Hasil pratinjau
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data]
+                properties:
+                  data:
+                    $ref: '#/components/schemas/ImportPreview'
+        '409':
+          description: Database sudah berisi data
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                error:
+                  code: import_not_allowed
+                  message: Impor hanya tersedia saat database masih kosong.
+        '413':
+          $ref: '#/components/responses/Error'
+        '415':
+          $ref: '#/components/responses/Error'
+        default:
+          $ref: '#/components/responses/Error'
+
+  /api/import/commit:
+    post:
+      tags: [import]
+      summary: Simpan hasil impor secara atomik
+      description: |
+        Semua baris masuk atau tidak sama sekali (FR-101). Setelah commit,
+        server memverifikasi jumlah baris, total kWh top-up, dan total biaya
+        terhadap sumber (FR-105).
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ImportCommitRequest'
+      responses:
+        '200':
+          description: Hasil commit dan verifikasi
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data]
+                properties:
+                  data:
+                    $ref: '#/components/schemas/ImportCommitResult'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '422':
+          $ref: '#/components/responses/ValidationFailed'
+        default:
+          $ref: '#/components/responses/Error'
+
+  /api/push/public-key:
+    get:
+      tags: [push]
+      summary: Kunci publik VAPID
+      responses:
+        '200':
+          description: Kunci publik untuk `PushManager.subscribe`
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data]
+                properties:
+                  data:
+                    $ref: '#/components/schemas/PushPublicKey'
+        default:
+          $ref: '#/components/responses/Error'
+
+  /api/push/subscriptions:
+    post:
+      tags: [push]
+      summary: Daftarkan subscription push
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PushSubscriptionInput'
+      responses:
+        '201':
+          description: Subscription tersimpan
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data]
+                properties:
+                  data:
+                    $ref: '#/components/schemas/PushSubscription'
+        '422':
+          $ref: '#/components/responses/ValidationFailed'
+        default:
+          $ref: '#/components/responses/Error'
+
+  /api/push/subscriptions/{id}:
+    parameters:
+      - $ref: '#/components/parameters/ResourceId'
+    delete:
+      tags: [push]
+      summary: Hapus subscription push
+      responses:
+        '204':
+          description: Terhapus
+        '404':
+          $ref: '#/components/responses/NotFound'
+        default:
+          $ref: '#/components/responses/Error'
+
+  /api/homepage:
+    get:
+      tags: [homepage]
+      summary: Ringkasan publik untuk layanan lain
+      description: |
+        Baca-saja, tanpa PIN (FR-110). Bentuk tetap sesuai FR-111 sampai
+        FR-113 dan tidak memakai envelope `data`. Field yang tidak dapat
+        dihitung bernilai null dengan `formatted` "N/A".
+      security: []
+      responses:
+        '200':
+          description: Ringkasan publik
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Homepage'
+              example:
+                label: kWh Tracker
+                value: 1794351550.049376
+                textValue: 11 Nov 2026, 05:59 AM WIB
+                targets:
+                  - name: last_input_ago
+                    value: 24.51
+                    formatted: 24.51h ago
+                  - name: last_kwh
+                    value: 182.61
+                    formatted: 182.61 kWh
+                  - name: last_kwh_per_day
+                    value: 10.24
+                    formatted: 10.24 kWh/day
+                  - name: estimated_depletion
+                    value: 11 Nov 2026, 05:59 AM WIB
+                    formatted: 11 Nov 2026, 05:59 AM WIB
+        default:
+          $ref: '#/components/responses/Error'
+
+components:
+  securitySchemes:
+    cookieAuth:
+      type: apiKey
+      in: cookie
+      name: meteran_session
+      description: |
+        Cookie sesi HttpOnly dari `POST /api/session`, idle 30 menit.
+        Wajib SameSite=Strict; Secure saat dilayani lewat HTTPS.
+
+  parameters:
+    ResourceId:
+      name: id
+      in: path
+      required: true
+      schema:
+        $ref: '#/components/schemas/Id'
+    FromDate:
+      name: from
+      in: query
+      required: false
+      description: Batas awal (inklusif). Tanggal atau date-time.
+      schema:
+        type: string
+        format: date-time
+    ToDate:
+      name: to
+      in: query
+      required: false
+      description: Batas akhir (eksklusif). Tanggal atau date-time.
+      schema:
+        type: string
+        format: date-time
+    Limit:
+      name: limit
+      in: query
+      required: false
+      schema:
+        type: integer
+        minimum: 1
+        maximum: 200
+        default: 20
+    Cursor:
+      name: cursor
+      in: query
+      required: false
+      description: Kursor opaque dari `meta.nextCursor`.
+      schema:
+        type: string
+
+  responses:
+    Error:
+      description: Kesalahan umum
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+    NotFound:
+      description: Resource tidak ditemukan
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+          example:
+            error:
+              code: not_found
+              message: Data tidak ditemukan.
+    Conflict:
+      description: Konflik status resource
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+    ValidationFailed:
+      description: Validasi gagal
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+          example:
+            error:
+              code: validation_error
+              message: Data tidak valid.
+              details:
+                - field: timestamp
+                  code: future_timestamp
+                  message: Waktu catat tidak boleh di masa depan.
+    ConfirmationRequired:
+      description: Perlu konfirmasi pengguna sebelum disimpan
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+          example:
+            error:
+              code: confirmation_required
+              message: Perlu konfirmasi sebelum menyimpan.
+              details:
+                - field: reading
+                  code: increased_without_topup
+                  message: Sisa kWh naik tanpa top-up tercatat.
+                - field: timestamp
+                  code: duplicate_timestamp
+                  message: Sudah ada pembacaan pada waktu yang sama.
+    PinInvalid:
+      description: PIN salah
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+          example:
+            error:
+              code: pin_invalid
+              message: PIN salah.
+    RateLimited:
+      description: Terlalu banyak percobaan
+      headers:
+        Retry-After:
+          schema:
+            type: integer
+          description: Detik sampai boleh mencoba lagi.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+          example:
+            error:
+              code: rate_limited
+              message: Terlalu banyak percobaan. Coba lagi nanti.
+
+  schemas:
+    Id:
+      type: string
+      minLength: 1
+      maxLength: 64
+      description: ID opaque (ULID). Jangan diurai sebagai angka.
+
+    Health:
+      type: object
+      required: [status, version, time]
+      properties:
+        status:
+          type: string
+          enum: [ok, degraded]
+        version:
+          type: string
+        time:
+          type: string
+          format: date-time
+
+    SessionState:
+      type: object
+      required: [authenticated, pinSet, expiresAt]
+      properties:
+        authenticated:
+          type: boolean
+        pinSet:
+          type: boolean
+        expiresAt:
+          type: [string, 'null']
+          format: date-time
+
+    SessionCreate:
+      type: object
+      required: [pin]
+      properties:
+        pin:
+          type: string
+          minLength: 4
+          maxLength: 128
+
+    PinUpdate:
+      type: object
+      required: [newPin]
+      properties:
+        currentPin:
+          type: [string, 'null']
+          description: Wajib bila PIN sudah pernah diatur.
+        newPin:
+          type: string
+          minLength: 4
+          maxLength: 128
+
+    Reading:
+      type: object
+      required:
+        - id
+        - meterName
+        - reading
+        - timestamp
+        - notes
+        - rechargeAmount
+        - cost
+        - tokenId
+        - source
+        - locked
+        - oldId
+        - createdAt
+        - updatedAt
+      properties:
+        id:
+          $ref: '#/components/schemas/Id'
+        meterName:
+          type: string
+          description: Selalu "main" untuk v1.
+        reading:
+          type: number
+          description: Sisa kWh setelah pembacaan.
+        timestamp:
+          type: string
+          format: date-time
+        notes:
+          type: [string, 'null']
+        rechargeAmount:
+          type: [number, 'null']
+          description: kWh token yang masuk pada pembacaan ini.
+        cost:
+          type: [integer, 'null']
+          description: Rupiah yang dibayar untuk top-up pada pembacaan ini.
+        tokenId:
+          type: [string, 'null']
+        source:
+          type: string
+          enum: [manual, import, token]
+        locked:
+          type: boolean
+          description: True bila tertaut token historis (FR-03).
+        oldId:
+          type: [string, 'null']
+          description: ID dari database aplikasi lama, hanya untuk data impor.
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+
+    ReadingInput:
+      type: object
+      required: [reading, timestamp]
+      properties:
+        id:
+          $ref: '#/components/schemas/Id'
+        meterName:
+          type: string
+          default: main
+        reading:
+          type: number
+          minimum: 0
+        timestamp:
+          type: string
+          format: date-time
+        notes:
+          type: [string, 'null']
+        rechargeAmount:
+          type: [number, 'null']
+        cost:
+          type: [integer, 'null']
+        tokenId:
+          type: [string, 'null']
+        source:
+          type: string
+          enum: [manual, import, token]
+          default: manual
+        oldId:
+          type: [string, 'null']
+        confirm:
+          type: array
+          description: Kode konfirmasi yang disetujui pengguna.
+          items:
+            type: string
+            enum: [increased_without_topup, duplicate_timestamp]
+
+    ReadingPage:
+      type: object
+      required: [data, meta]
+      properties:
+        data:
+          type: array
+          items:
+            $ref: '#/components/schemas/Reading'
+        meta:
+          $ref: '#/components/schemas/PageMeta'
+
+    PageMeta:
+      type: object
+      required: [nextCursor, hasMore]
+      properties:
+        nextCursor:
+          type: [string, 'null']
+        hasMore:
+          type: boolean
+        total:
+          type: integer
+
+    Token:
+      type: object
+      required:
+        - id
+        - kwh
+        - cost
+        - purchasedAt
+        - type
+        - denomination
+        - denominationMismatch
+        - status
+        - source
+        - notes
+        - hasCode
+        - linkedReadingId
+        - canDelete
+        - deleteBlockedReason
+        - lockedAt
+        - refillsSinceLock
+        - createdAt
+        - updatedAt
+      properties:
+        id:
+          $ref: '#/components/schemas/Id'
+        kwh:
+          type: number
+        cost:
+          type: [integer, 'null']
+        purchasedAt:
+          type: string
+          format: date-time
+        type:
+          type: string
+          enum: [additional, bulk]
+          description: Token tambahan atau token isi besar (FR-15).
+        denomination:
+          type: [integer, 'null']
+          description: Nominal terdekat dari daftar denominasi; null bila tidak yakin.
+        denominationMismatch:
+          type: boolean
+          description: True bila biaya di luar toleransi ±10% atau daftar kosong.
+        status:
+          type: string
+          enum: [unused, used, locked]
+        source:
+          type: string
+          enum: [manual, import]
+        notes:
+          type: [string, 'null']
+        hasCode:
+          type: boolean
+          description: Kode disimpan, kirim lewat endpoint reveal untuk membacanya.
+        linkedReadingId:
+          type: [string, 'null']
+        canDelete:
+          type: boolean
+        deleteBlockedReason:
+          type: [string, 'null']
+          enum:
+            - null
+            - not_locked
+            - refills_pending
+        lockedAt:
+          type: [string, 'null']
+          format: date-time
+        refillsSinceLock:
+          type: [integer, 'null']
+          description: Jumlah pengisian token sejak token ini terkunci (FR-13).
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+
+    TokenCreate:
+      type: object
+      required: [code, kwh, cost, purchasedAt, type]
+      properties:
+        id:
+          $ref: '#/components/schemas/Id'
+        code:
+          type: string
+          minLength: 4
+          maxLength: 64
+          writeOnly: true
+        kwh:
+          type: number
+          exclusiveMinimum: 0
+        cost:
+          type: integer
+          minimum: 0
+        purchasedAt:
+          type: string
+          format: date-time
+        type:
+          type: string
+          enum: [additional, bulk]
+        denomination:
+          type: [integer, 'null']
+          description: Timpa nominal otomatis bila diisi.
+        notes:
+          type: [string, 'null']
+        confirm:
+          type: array
+          items:
+            type: string
+            enum: [denomination_out_of_tolerance, duplicate_timestamp]
+
+    TokenUpsert:
+      type: object
+      required: [kwh, purchasedAt, type]
+      properties:
+        id:
+          $ref: '#/components/schemas/Id'
+        code:
+          type: string
+          minLength: 4
+          maxLength: 64
+          writeOnly: true
+          description: Opsional saat memperbarui token yang sudah punya kode.
+        kwh:
+          type: number
+          exclusiveMinimum: 0
+        cost:
+          type: [integer, 'null']
+        purchasedAt:
+          type: string
+          format: date-time
+        type:
+          type: string
+          enum: [additional, bulk]
+        denomination:
+          type: [integer, 'null']
+        notes:
+          type: [string, 'null']
+        confirm:
+          type: array
+          items:
+            type: string
+            enum: [denomination_out_of_tolerance, duplicate_timestamp]
+
+    TokenPatch:
+      type: object
+      properties:
+        type:
+          type: string
+          enum: [additional, bulk]
+        denomination:
+          type: [integer, 'null']
+        notes:
+          type: [string, 'null']
+        purchasedAt:
+          type: string
+          format: date-time
+
+    TokenPage:
+      type: object
+      required: [data, meta]
+      properties:
+        data:
+          type: array
+          items:
+            $ref: '#/components/schemas/Token'
+        meta:
+          $ref: '#/components/schemas/PageMeta'
+
+    TokenMarkUsed:
+      type: object
+      required: [reading, at]
+      properties:
+        reading:
+          type: number
+          minimum: 0
+          description: Sisa kWh sesudah token dimasukkan.
+        at:
+          type: string
+          format: date-time
+        notes:
+          type: [string, 'null']
+        confirm:
+          type: array
+          items:
+            type: string
+            enum: [increased_without_topup, duplicate_timestamp]
+
+    TokenMarkUsedResult:
+      type: object
+      required: [token, reading]
+      properties:
+        token:
+          $ref: '#/components/schemas/Token'
+        reading:
+          $ref: '#/components/schemas/Reading'
+
+    TokenCancelResult:
+      type: object
+      required: [token, cancelledReadingId]
+      properties:
+        token:
+          $ref: '#/components/schemas/Token'
+        cancelledReadingId:
+          type: [string, 'null']
+
+    TokenCode:
+      type: object
+      required: [code]
+      properties:
+        code:
+          type: string
+
+    UsageBucket:
+      type: object
+      required: [key, label, start, end, kwh, cost, estimated, estimatedDays, days]
+      properties:
+        key:
+          type: string
+          description: Kunci stabil, misalnya `2026-11-24`, `2026-W48`, `2026-11`.
+        label:
+          type: string
+          description: Label siap tampil, misalnya `24 Nov` atau `Nov 2026`.
+        start:
+          type: string
+          format: date-time
+        end:
+          type: string
+          format: date-time
+        kwh:
+          type: number
+        cost:
+          type: [integer, 'null']
+        estimated:
+          type: boolean
+          description: True bila sebagian atau seluruh bucket berasal dari pembagian proporsional.
+        estimatedDays:
+          type: integer
+        days:
+          type: integer
+
+    UsagePage:
+      type: object
+      required: [data, meta]
+      properties:
+        data:
+          type: array
+          items:
+            $ref: '#/components/schemas/UsageBucket'
+        meta:
+          allOf:
+            - $ref: '#/components/schemas/PageMeta'
+            - type: object
+              properties:
+                totalKwh:
+                  type: number
+                totalCost:
+                  type: [integer, 'null']
+                group:
+                  type: string
+                  enum: [day, week, month]
+
+    Summary:
+      type: object
+      required:
+        - computedAt
+        - windowDays
+        - dataQuality
+        - latestReading
+        - avgKwhPerDay
+        - todayKwh
+        - weekKwh
+        - weekCost
+        - monthKwh
+        - monthCost
+        - effectivePricePerKwh
+        - buffer
+        - tokenStockKwh
+        - availableKwh
+        - usableKwh
+        - daysLeft
+        - depletionAt
+        - targetAt
+        - needKwh
+        - needRupiah
+        - recommendation
+        - tariffComparison
+        - urgency
+        - alerts
+        - chart
+      properties:
+        computedAt:
+          type: string
+          format: date-time
+        windowDays:
+          type: integer
+          enum: [7, 14, 30]
+        dataQuality:
+          type: string
+          enum: [ok, insufficient]
+        latestReading:
+          oneOf:
+            - $ref: '#/components/schemas/Reading'
+            - type: 'null'
+        avgKwhPerDay:
+          type: [number, 'null']
+        todayKwh:
+          type: [number, 'null']
+        weekKwh:
+          type: [number, 'null']
+          description: Pemakaian Senin sampai hari ini (FR-23).
+        weekCost:
+          type: [integer, 'null']
+          description: weekKwh × harga efektif (FR-24).
+        monthKwh:
+          type: [number, 'null']
+        monthCost:
+          type: [integer, 'null']
+        effectivePricePerKwh:
+          type: [number, 'null']
+        buffer:
+          type: number
+        tokenStockKwh:
+          type: number
+          description: Hanya token tambahan berstatus unused (FR-15).
+        availableKwh:
+          type: number
+        usableKwh:
+          type: number
+        daysLeft:
+          type: [number, 'null']
+        depletionAt:
+          type: [string, 'null']
+          format: date-time
+        targetAt:
+          type: string
+          format: date-time
+        needKwh:
+          type: number
+        needRupiah:
+          type: [integer, 'null']
+        recommendation:
+          oneOf:
+            - $ref: '#/components/schemas/Recommendation'
+            - type: 'null'
+        tariffComparison:
+          $ref: '#/components/schemas/TariffComparison'
+        urgency:
+          $ref: '#/components/schemas/Urgency'
+        alerts:
+          type: array
+          items:
+            $ref: '#/components/schemas/Alert'
+        chart:
+          type: array
+          description: Tujuh hari terakhir, terbaru di kanan.
+          items:
+            $ref: '#/components/schemas/UsageBucket'
+
+    Recommendation:
+      type: object
+      required: [kwh, rupiah, denomination, status]
+      properties:
+        kwh:
+          type: number
+        rupiah:
+          type: [integer, 'null']
+        denomination:
+          type: [integer, 'null']
+        status:
+          type: string
+          enum: [ok, largest_only, no_denomination_available, price_unknown]
+
+    TariffComparison:
+      type: object
+      required: [purchasePricePerKwh, officialTariffPerKwh, diffRupiah, diffPercent]
+      properties:
+        purchasePricePerKwh:
+          type: [number, 'null']
+        officialTariffPerKwh:
+          type: [number, 'null']
+        diffRupiah:
+          type: [number, 'null']
+        diffPercent:
+          type: [number, 'null']
+
+    Urgency:
+      type: object
+      required: [level, hoursSinceLastInput, message]
+      properties:
+        level:
+          type: string
+          enum: [neutral, remind, overdue]
+        hoursSinceLastInput:
+          type: [number, 'null']
+        message:
+          type: string
+
+    Alert:
+      type: object
+      required: [code, severity, message]
+      properties:
+        code:
+          type: string
+          enum:
+            - buffer_near
+            - topup_reminder
+            - input_overdue
+            - data_insufficient
+            - denomination_missing
+        severity:
+          type: string
+          enum: [info, warning, critical]
+        message:
+          type: string
+
+    Settings:
+      type: object
+      required:
+        - buffer
+        - avgWindow
+        - targetHour
+        - reminderHour
+        - denominations
+        - tariff
+        - pinSet
+        - pushEnabled
+        - importCompletedAt
+        - updatedAt
+      properties:
+        buffer:
+          type: number
+          minimum: 0
+        avgWindow:
+          type: integer
+          enum: [7, 14, 30]
+        targetHour:
+          type: integer
+          minimum: 0
+          maximum: 23
+        reminderHour:
+          type: integer
+          minimum: 0
+          maximum: 23
+        denominations:
+          type: array
+          items:
+            type: integer
+            minimum: 0
+        tariff:
+          $ref: '#/components/schemas/Tariff'
+        pinSet:
+          type: boolean
+          readOnly: true
+        pushEnabled:
+          type: boolean
+          readOnly: true
+        importCompletedAt:
+          type: [string, 'null']
+          format: date-time
+          readOnly: true
+        updatedAt:
+          type: string
+          format: date-time
+          readOnly: true
+
+    Tariff:
+      type: object
+      required: [golongan, perKwh]
+      properties:
+        golongan:
+          type: [string, 'null']
+          description: Informasi saja, misalnya "R1/1300".
+        perKwh:
+          type: [number, 'null']
+          description: Tarif resmi untuk pembanding (FR-33). Tidak dipakai menghitung.
+
+    SettingsPatch:
+      type: object
+      properties:
+        buffer:
+          type: number
+          minimum: 0
+        avgWindow:
+          type: integer
+          enum: [7, 14, 30]
+        targetHour:
+          type: integer
+          minimum: 0
+          maximum: 23
+        reminderHour:
+          type: integer
+          minimum: 0
+          maximum: 23
+        denominations:
+          type: array
+          items:
+            type: integer
+            minimum: 0
+        tariff:
+          $ref: '#/components/schemas/Tariff'
+
+    ImportIssue:
+      type: object
+      required: [code, message]
+      properties:
+        code:
+          type: string
+          enum:
+            - increased_without_topup
+            - duplicate_timestamp
+            - topup_without_cost
+            - cost_without_topup
+            - empty_value
+            - negative_value
+            - denomination_out_of_tolerance
+            - other_meter
+        message:
+          type: string
+
+    ImportRow:
+      type: object
+      required: [oldId, timestamp, reading, rechargeAmount, cost, notes, issues]
+      properties:
+        oldId:
+          type: [string, 'null']
+        timestamp:
+          type: [string, 'null']
+          format: date-time
+        reading:
+          type: [number, 'null']
+        rechargeAmount:
+          type: [number, 'null']
+        cost:
+          type: [integer, 'null']
+        notes:
+          type: [string, 'null']
+        issues:
+          type: array
+          items:
+            $ref: '#/components/schemas/ImportIssue'
+
+    ImportStats:
+      type: object
+      required: [rows, topupKwh, topupCost]
+      properties:
+        rows:
+          type: integer
+        topupKwh:
+          type: number
+        topupCost:
+          type: integer
+
+    ImportPreview:
+      type: object
+      required: [previewId, expiresAt, source, groups, stats]
+      properties:
+        previewId:
+          type: string
+        expiresAt:
+          type: string
+          format: date-time
+        source:
+          type: object
+          required: [rows, mainRows, otherMeterRows]
+          properties:
+            rows:
+              type: integer
+            mainRows:
+              type: integer
+            otherMeterRows:
+              type: integer
+        groups:
+          type: object
+          required: [valid, needsConfirmation, rejected]
+          properties:
+            valid:
+              type: array
+              items:
+                $ref: '#/components/schemas/ImportRow'
+            needsConfirmation:
+              type: array
+              items:
+                $ref: '#/components/schemas/ImportRow'
+            rejected:
+              type: array
+              items:
+                $ref: '#/components/schemas/ImportRow'
+        stats:
+          $ref: '#/components/schemas/ImportStats'
+
+    ImportCommitRequest:
+      type: object
+      required: [previewId, confirm]
+      properties:
+        previewId:
+          type: string
+        confirm:
+          type: boolean
+          description: Harus true; false membatalkan impor tanpa menulis apa pun.
+
+    ImportCommitResult:
+      type: object
+      required: [imported, verification]
+      properties:
+        imported:
+          $ref: '#/components/schemas/ImportStats'
+        verification:
+          type: object
+          required: [rowsMatch, kwhMatch, costMatch, source]
+          properties:
+            rowsMatch:
+              type: boolean
+            kwhMatch:
+              type: boolean
+            costMatch:
+              type: boolean
+            source:
+              $ref: '#/components/schemas/ImportStats'
+
+    PushKeys:
+      type: object
+      required: [p256dh, auth]
+      properties:
+        p256dh:
+          type: string
+        auth:
+          type: string
+
+    PushSubscriptionInput:
+      type: object
+      required: [endpoint, keys]
+      properties:
+        endpoint:
+          type: string
+          format: uri
+        keys:
+          $ref: '#/components/schemas/PushKeys'
+
+    PushSubscription:
+      type: object
+      required: [id, endpoint, keys, createdAt]
+      properties:
+        id:
+          $ref: '#/components/schemas/Id'
+        endpoint:
+          type: string
+          format: uri
+        keys:
+          $ref: '#/components/schemas/PushKeys'
+        createdAt:
+          type: string
+          format: date-time
+
+    PushPublicKey:
+      type: object
+      required: [publicKey]
+      properties:
+        publicKey:
+          type: string
+
+    HomepageTarget:
+      type: object
+      required: [name, value, formatted]
+      properties:
+        name:
+          type: string
+          enum: [last_input_ago, last_kwh, last_kwh_per_day, estimated_depletion]
+        value:
+          oneOf:
+            - type: number
+            - type: string
+            - type: 'null'
+        formatted:
+          type: string
+
+    Homepage:
+      type: object
+      required: [label, value, textValue, targets]
+      properties:
+        label:
+          type: string
+          const: kWh Tracker
+        value:
+          type: [number, 'null']
+          description: Epoch detik (desimal) waktu sentuh buffer.
+        textValue:
+          type: string
+        targets:
+          type: array
+          minItems: 4
+          maxItems: 4
+          items:
+            $ref: '#/components/schemas/HomepageTarget'
+
+    Error:
+      type: object
+      required: [error]
+      properties:
+        error:
+          type: object
+          required: [code, message]
+          properties:
+            code:
+              type: string
+              enum:
+                - validation_error
+                - confirmation_required
+                - unauthorized
+                - pin_invalid
+                - rate_limited
+                - not_found
+                - conflict
+                - reading_locked
+                - token_locked
+                - token_not_deletable
+                - import_not_allowed
+                - unsupported_media_type
+                - payload_too_large
+                - internal_error
+            message:
+              type: string
+            details:
+              type: array
+              items:
+                type: object
+                required: [code, message]
+                properties:
+                  field:
+                    type: string
+                  code:
+                    type: string
+                  message:
+                    type: string

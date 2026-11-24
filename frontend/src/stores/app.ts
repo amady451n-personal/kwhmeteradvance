@@ -1,0 +1,408 @@
+import { computed, reactive, ref } from 'vue'
+import { defineStore } from 'pinia'
+import { apiClient, ApiError } from '../api'
+import { summaryFromApi } from '../api/mappers'
+import { drainQueue, enqueueReading, queueSize } from '../api/queue'
+import type { ReadingInput, Settings as ApiSettings, SettingsPatch, TokenCreate } from '../api'
+import { DEFAULT_DENOMINATIONS, readingViews, summarize } from '../domain/energy'
+import { formatDate, formatRelative } from '../domain/format'
+import type { Reading, Summary, TokenRecord } from '../domain/types'
+
+const PREVIEW_KEY = 'meteran.preview.dismissed'
+
+interface Settings {
+  buffer: number
+  avgWindow: 7 | 14 | 30
+  targetHour: number
+  reminderHour: number
+  denominations: number[]
+  tariffPerKwh: number | null
+  tariffGolongan: string | null
+  previewDismissed: boolean
+}
+
+export interface NewReading {
+  timestamp: string
+  reading: number
+  rechargeAmount?: number | null
+  cost?: number | null
+  notes?: string | null
+  confirm?: Array<'increased_without_topup' | 'duplicate_timestamp'>
+}
+
+export interface NewToken {
+  code: string
+  kwh: number
+  cost: number
+  purchasedAt: string
+  type: 'additional' | 'bulk'
+  denomination?: number | null
+  notes?: string | null
+  confirm?: Array<'denomination_out_of_tolerance' | 'duplicate_timestamp'>
+}
+
+const defaults: Settings = {
+  buffer: 10,
+  avgWindow: 7,
+  targetHour: 6,
+  reminderHour: 8,
+  denominations: [...DEFAULT_DENOMINATIONS],
+  tariffPerKwh: null,
+  tariffGolongan: null,
+  previewDismissed: localStorage.getItem(PREVIEW_KEY) === '1',
+}
+
+function applySettings(target: Settings, source: ApiSettings) {
+  target.buffer = source.buffer
+  target.avgWindow = source.avgWindow
+  target.targetHour = source.targetHour
+  target.reminderHour = source.reminderHour
+  target.denominations = [...source.denominations]
+  target.tariffPerKwh = source.tariff.perKwh
+  target.tariffGolongan = source.tariff.golongan
+}
+
+export const useAppStore = defineStore('app', () => {
+  const client = apiClient()
+  const readings = ref<Reading[]>([])
+  const tokens = ref<TokenRecord[]>([])
+  const settings = reactive<Settings>({ ...defaults })
+  const serverSummary = ref<Summary | null>(null)
+  const nowMs = ref(Date.now())
+  const loading = ref(true)
+  const ready = ref(false)
+  const offline = ref(false)
+  const error = ref('')
+  const queuedCount = ref(queueSize())
+  const session = ref<{ authenticated: boolean; pinSet: boolean } | null>(null)
+  const toast = reactive({ open: false, message: '' })
+
+  const summary = computed<Summary>(
+    () =>
+      serverSummary.value ??
+      summarize({
+        readings: readings.value,
+        tokens: tokens.value,
+        buffer: settings.buffer,
+        avgWindow: settings.avgWindow,
+        nowMs: nowMs.value,
+        denominations: settings.denominations,
+        targetHour: settings.targetHour,
+        officialTariff: settings.tariffPerKwh,
+      }),
+  )
+  const views = computed(() => readingViews(readings.value))
+  const latest = computed(() => summary.value.latest)
+  const stock = computed(() => summary.value.tokenStock)
+  const sourceLabel = computed(() =>
+    client.mode === 'preview' ? 'Mode pratinjau perangkat' : 'Server tersambung',
+  )
+  const inputStatus = computed(() => {
+    if (!summary.value.latestMs)
+      return { label: 'Belum ada catatan', color: 'error', level: 'late' as const }
+    const hours = (nowMs.value - summary.value.latestMs) / 3_600_000
+    const label = formatRelative(summary.value.latestMs, nowMs.value)
+    if (hours < 24) return { label, color: 'success', level: 'fresh' as const }
+    if (hours < 48) return { label, color: 'warning', level: 'due' as const }
+    return { label, color: 'error', level: 'late' as const }
+  })
+
+  async function login(pin: string) {
+    await client.login(pin)
+    session.value = { authenticated: true, pinSet: session.value?.pinSet ?? true }
+    await init()
+  }
+
+  async function setPin(currentPin: string | null, newPin: string) {
+    await client.setPin(currentPin, newPin)
+    session.value = { authenticated: true, pinSet: true }
+    await init()
+  }
+
+  function notify(message: string) {
+    toast.message = message
+    toast.open = true
+  }
+
+  function tick() {
+    nowMs.value = Date.now()
+  }
+
+  async function refreshSummary() {
+    serverSummary.value = summaryFromApi(await client.getSummary(settings.avgWindow))
+  }
+
+  async function init() {
+    loading.value = true
+    error.value = ''
+    try {
+      const [readingsPage, tokensPage, serverSettings, serverView] = await Promise.all([
+        client.listReadings({ limit: 500 }),
+        client.listTokens({ limit: 200 }),
+        client.getSettings(),
+        client.getSummary().catch(() => null),
+      ])
+      readings.value = readingsPage.data
+      session.value = await client.getSession().catch(() => null)
+      tokens.value = tokensPage.data
+      applySettings(settings, serverSettings)
+      serverSummary.value = serverView ? summaryFromApi(serverView) : null
+      offline.value = false
+      ready.value = true
+      if (queuedCount.value > 0) {
+        queuedCount.value = await drainQueue((id, body) => client.upsertReading(id, body)).catch(
+          () => queuedCount.value,
+        )
+      }
+    } catch (caught) {
+      offline.value = caught instanceof ApiError && caught.isOffline
+      error.value = caught instanceof Error ? caught.message : 'Gagal memuat data.'
+    } finally {
+      loading.value = false
+    }
+  }
+
+  function fail(caught: unknown): never {
+    error.value = caught instanceof Error ? caught.message : 'Permintaan gagal.'
+    if (caught instanceof ApiError && caught.isOffline) {
+      offline.value = true
+      error.value = 'Tidak ada koneksi ke server.'
+    }
+    throw caught
+  }
+
+  function payload(input: NewReading, id?: string): ReadingInput {
+    return {
+      id,
+      meterName: 'main',
+      reading: input.reading,
+      timestamp: input.timestamp,
+      notes: input.notes ?? null,
+      rechargeAmount: input.rechargeAmount ?? null,
+      cost: input.cost ?? null,
+      source: 'manual',
+      confirm: input.confirm,
+    }
+  }
+
+  function localReading(id: string, input: NewReading): Reading {
+    const now = new Date().toISOString()
+    const existing = readings.value.find((row) => row.id === id)
+    return {
+      id,
+      meterName: 'main',
+      reading: input.reading,
+      timestamp: input.timestamp,
+      notes: input.notes ?? null,
+      rechargeAmount: input.rechargeAmount ?? null,
+      cost: input.cost ?? null,
+      tokenId: null,
+      source: 'manual',
+      locked: existing?.locked ?? false,
+      oldId: null,
+      createdAt: existing?.createdAt ?? now,
+      updatedAt: now,
+    }
+  }
+
+  function keepQueued(id: string, input: NewReading) {
+    queuedCount.value = enqueueReading(id, payload(input, id))
+    offline.value = true
+    const next = localReading(id, input)
+    const index = readings.value.findIndex((row) => row.id === id)
+    if (index >= 0) readings.value[index] = next
+    else readings.value.push(next)
+    serverSummary.value = null
+    notify('Tidak ada koneksi. Catatan menunggu antrean.')
+  }
+
+  async function addReading(input: NewReading) {
+    const id = crypto.randomUUID()
+    try {
+      const created = await client.upsertReading(id, payload(input, id))
+      readings.value.push(created)
+    } catch (caught) {
+      if (caught instanceof ApiError && caught.isOffline) {
+        keepQueued(id, input)
+        return
+      }
+      return fail(caught)
+    }
+    serverSummary.value = null
+    notify('Catatan meter tersimpan.')
+    return refreshSummary().catch(() => {})
+  }
+
+  async function updateReading(id: string, input: NewReading) {
+    try {
+      const updated = await client.upsertReading(id, payload(input, id))
+      const index = readings.value.findIndex((row) => row.id === id)
+      if (index >= 0) readings.value[index] = updated
+    } catch (caught) {
+      if (caught instanceof ApiError && caught.isOffline) {
+        keepQueued(id, input)
+        return
+      }
+      return fail(caught)
+    }
+    serverSummary.value = null
+    notify('Catatan meter diperbarui.')
+    return refreshSummary().catch(() => {})
+  }
+
+  async function deleteReading(id: string) {
+    const removed = readings.value.find((row) => row.id === id)
+    try {
+      await client.deleteReading(id)
+      readings.value = readings.value.filter((row) => row.id !== id)
+      if (removed?.tokenId) tokens.value = (await client.listTokens({ limit: 200 })).data
+    } catch (caught) {
+      return fail(caught)
+    }
+    serverSummary.value = null
+    notify('Catatan meter dihapus.')
+    return refreshSummary().catch(() => {})
+  }
+
+  async function addToken(input: NewToken) {
+    const body: TokenCreate = { ...input }
+    try {
+      const created = await client.createToken(body)
+      tokens.value.unshift(created)
+    } catch (caught) {
+      return fail(caught)
+    }
+    serverSummary.value = null
+    notify('Token tersimpan.')
+    return refreshSummary().catch(() => {})
+  }
+
+  async function patchToken(id: string, patch: Partial<Pick<TokenRecord, 'type' | 'denomination' | 'notes' | 'purchasedAt'>>) {
+    try {
+      const updated = await client.patchToken(id, patch)
+      const index = tokens.value.findIndex((row) => row.id === id)
+      if (index >= 0) tokens.value[index] = updated
+      return updated
+    } catch (caught) {
+      return fail(caught)
+    }
+  }
+
+  async function markTokenUsed(id: string, reading = latest.value?.reading ?? 0) {
+    try {
+      const result = await client.markTokenUsed(id, { reading, at: new Date().toISOString() })
+      const index = tokens.value.findIndex((row) => row.id === id)
+      if (index >= 0) tokens.value[index] = result.token
+      readings.value.push(result.reading)
+    } catch (caught) {
+      return fail(caught)
+    }
+    serverSummary.value = null
+    notify('Token ditandai terpakai.')
+    return refreshSummary().catch(() => {})
+  }
+
+  async function cancelToken(id: string) {
+    let result
+    try {
+      result = await client.cancelToken(id)
+    } catch (caught) {
+      return fail(caught)
+    }
+    const index = tokens.value.findIndex((row) => row.id === id)
+    if (index >= 0) tokens.value[index] = result.token
+    if (result.cancelledReadingId) {
+      readings.value = readings.value.filter((row) => row.id !== result.cancelledReadingId)
+    }
+    serverSummary.value = null
+    notify('Token dikembalikan ke belum dipakai.')
+    return refreshSummary().catch(() => {})
+  }
+
+  async function removeToken(id: string) {
+    try {
+      await client.deleteToken(id)
+      tokens.value = tokens.value.filter((token) => token.id !== id)
+    } catch (caught) {
+      return fail(caught)
+    }
+    serverSummary.value = null
+    notify('Token dihapus.')
+    return refreshSummary().catch(() => {})
+  }
+
+  async function revealTokenCode(id: string) {
+    try {
+      return await client.revealTokenCode(id)
+    } catch (caught) {
+      return fail(caught)
+    }
+  }
+
+  async function updateSettings(patch: Partial<Settings>) {
+    Object.assign(settings, patch)
+    const body: SettingsPatch = {}
+    if (patch.buffer != null) body.buffer = patch.buffer
+    if (patch.avgWindow) body.avgWindow = patch.avgWindow
+    if (patch.targetHour != null) body.targetHour = patch.targetHour
+    if (patch.reminderHour != null) body.reminderHour = patch.reminderHour
+    if (patch.denominations) body.denominations = patch.denominations
+    if (patch.tariffPerKwh !== undefined || patch.tariffGolongan !== undefined) {
+      body.tariff = {
+        perKwh: settings.tariffPerKwh,
+        golongan: settings.tariffGolongan,
+      }
+    }
+    try {
+      applySettings(settings, await client.patchSettings(body))
+      serverSummary.value = null
+      await refreshSummary()
+    } catch (caught) {
+      fail(caught)
+    }
+  }
+
+  function dismissPreview() {
+    settings.previewDismissed = true
+    localStorage.setItem(PREVIEW_KEY, '1')
+  }
+
+  return {
+    mode: client.mode,
+    readings,
+    tokens,
+    settings,
+    summary,
+    views,
+    latest,
+    stock,
+    nowMs,
+    loading,
+    ready,
+    offline,
+    queuedCount,
+    session,
+    login,
+    setPin,
+    error,
+    toast,
+    sourceLabel,
+    inputStatus,
+    tick,
+    notify,
+    init,
+    refreshSummary,
+    addReading,
+    updateReading,
+    deleteReading,
+    addToken,
+    patchToken,
+    markTokenUsed,
+    cancelToken,
+    removeToken,
+    revealTokenCode,
+    updateSettings,
+    dismissPreview,
+    snapshotDate: formatDate(new Date().toISOString()),
+  }
+})

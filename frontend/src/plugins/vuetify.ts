@@ -1,0 +1,88 @@
+import { createVuetify } from 'vuetify'
+import { aliases, mdi } from 'vuetify/iconsets/mdi'
+
+const light = {
+  dark: false,
+  colors: {
+    background: '#F6F3EB',
+    surface: '#FFFDF8',
+    'on-surface': '#15201D',
+    primary: '#0D5C53',
+    'on-primary': '#FFFFFF',
+    'primary-container': '#C8E9E2',
+    'on-primary-container': '#00201C',
+    secondary: '#4F635E',
+    'on-secondary': '#FFFFFF',
+    'secondary-container': '#D7E5DF',
+    'on-secondary-container': '#0E211C',
+    accent: '#A85F00',
+    'on-accent': '#FFFFFF',
+    'accent-container': '#FFE0B2',
+    'on-accent-container': '#2B1700',
+    error: '#B3261E',
+    'on-error': '#FFFFFF',
+    'error-container': '#F9DEDC',
+    'on-error-container': '#410E0B',
+    success: '#2E6B4F',
+    warning: '#A85F00',
+    info: '#0D5C53',
+    outline: '#7A8A85',
+    'outline-variant': '#D9D4C8',
+    'surface-variant': '#E7E3D8',
+    'on-surface-variant': '#44524E',
+  },
+}
+
+const dark = {
+  dark: true,
+  colors: {
+    background: '#0C1513',
+    surface: '#121E1B',
+    'on-surface': '#E3ECE8',
+    primary: '#82D5C8',
+    'on-primary': '#003731',
+    'primary-container': '#005049',
+    'on-primary-container': '#A0F2E4',
+    secondary: '#B4C9C2',
+    'on-secondary': '#1F352F',
+    'secondary-container': '#354B45',
+    'on-secondary-container': '#D0E5DE',
+    accent: '#F3B75F',
+    'on-accent': '#3F2A00',
+    'accent-container': '#5C3D00',
+    'on-accent-container': '#FFDEA8',
+    error: '#F2B8B5',
+    'on-error': '#601410',
+    'error-container': '#8C1D18',
+    'on-error-container': '#F9DEDC',
+    success: '#8FD7AE',
+    warning: '#F3B75F',
+    info: '#82D5C8',
+    outline: '#84968F',
+    'outline-variant': '#3A4A45',
+    'surface-variant': '#243430',
+    'on-surface-variant': '#C2D1CB',
+  },
+}
+
+export const vuetify = createVuetify({
+  theme: {
+    defaultTheme: 'light',
+    themes: { light, dark },
+  },
+  icons: {
+    defaultSet: 'mdi',
+    aliases,
+    sets: { mdi },
+  },
+  defaults: {
+    VBtn: { rounded: 'lg', elevation: 0 },
+    VCard: { rounded: 'lg', elevation: 0 },
+    VTextField: { variant: 'outlined', density: 'comfortable', hideDetails: 'auto' },
+    VSelect: { variant: 'outlined', density: 'comfortable', hideDetails: 'auto' },
+    VChip: { rounded: 'pill' },
+    VAlert: { variant: 'tonal', rounded: 'lg' },
+    VDialog: { scrim: true },
+    VSnackbar: { rounded: 'lg' },
+  },
+})

@@ -1,0 +1,8 @@
+# Image yang di-pull KHUSUS untuk proyek ini. Satu ref lengkap per baris.
+# Hanya isi file ini yang boleh dihapus oleh scripts/dev-images.sh.
+# format: ref | tanggal | alasan
+#
+# Contoh jika nanti pindah backend ke Rust:
+# rust:1.90-alpine | 2026-11-22 | build backend Rust
+#
+# Belum ada pull baru. Stack saat ini memakai image yang sudah terpasang.
