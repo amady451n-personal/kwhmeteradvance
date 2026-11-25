@@ -8,7 +8,14 @@ export interface TrendPoint {
   kwh: number
 }
 
-const props = defineProps<{ points: TrendPoint[] }>()
+const props = withDefaults(
+  defineProps<{
+    points: TrendPoint[]
+    label?: string
+    unit?: string
+  }>(),
+  { label: 'Tren pemakaian', unit: 'kWh/hari' },
+)
 
 const W = 320
 const H = 112
@@ -39,7 +46,7 @@ const last = computed(() => props.points[props.points.length - 1])
         :viewBox="`0 0 ${W} ${H}`"
         preserveAspectRatio="none"
         role="img"
-        :aria-label="`Tren pemakaian: ${points.map((p) => `${p.label} ${formatKwh(p.kwh)} kWh per hari`).join(', ')}`"
+        :aria-label="`${label}: ${points.map((p) => `${p.label} ${formatKwh(p.kwh)} ${unit}`).join(', ')}`"
       >
         <line class="trend-base" :x1="PAD" :y1="H - PAD" :x2="W - PAD" :y2="H - PAD" vector-effect="non-scaling-stroke" />
         <polyline class="trend-line" :points="line" vector-effect="non-scaling-stroke" />
@@ -51,7 +58,7 @@ const last = computed(() => props.points[props.points.length - 1])
         class="trend-dot"
         :class="{ 'trend-dot--last': index === points.length - 1 }"
         :style="{ left: `${(x(index) / W) * 100}%`, top: `${(y(point.kwh) / H) * 100}%` }"
-        :title="`${point.label}: ${formatKwh(point.kwh)} kWh/hari`"
+        :title="`${point.label}: ${formatKwh(point.kwh)} ${unit}`"
         aria-hidden="true"
       />
     </div>
@@ -59,7 +66,7 @@ const last = computed(() => props.points[props.points.length - 1])
     <div class="trend-foot">
       <span>{{ points[0]?.label }}</span>
       <strong class="tabular">
-        {{ last ? `${formatKwh(last.kwh)} kWh/hari` : '-' }}
+        {{ last ? `${formatKwh(last.kwh)} ${unit}` : '-' }}
       </strong>
       <span>{{ last?.label }}</span>
     </div>

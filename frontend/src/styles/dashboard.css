@@ -386,6 +386,17 @@
   padding: 20px 24px;
 }
 
+.trend-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+  gap: 16px;
+  margin-top: 16px;
+}
+
+.trend-grid .trend-card {
+  margin-top: 0;
+}
+
 .trend-chart {
   position: relative;
   margin-top: 20px;

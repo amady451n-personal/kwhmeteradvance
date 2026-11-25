@@ -38,6 +38,12 @@ const trend = computed(() =>
     .slice(0, 14)
     .reverse(),
 )
+const balanceTrend = computed(() =>
+  store.views
+    .slice(0, 14)
+    .map((view) => ({ key: view.id, label: formatDate(view.timestamp), kwh: view.reading }))
+    .reverse(),
+)
 const tariff = computed(() => store.summary.tariffComparison)
 </script>
 
@@ -237,19 +243,35 @@ const tariff = computed(() => store.summary.tariffComparison)
       </section>
     </div>
 
-    <section v-if="trend.length > 1" class="surface-card trend-card">
-      <div class="card-head">
-        <div>
-          <h2>Tren pemakaian</h2>
-          <p>Laju kWh/hari tiap catatan.</p>
+    <div v-if="trend.length > 1 || balanceTrend.length > 1" class="trend-grid">
+      <section v-if="trend.length > 1" class="surface-card trend-card">
+        <div class="card-head">
+          <div>
+            <h2>Tren pemakaian</h2>
+            <p>Laju kWh/hari tiap catatan.</p>
+          </div>
+          <v-btn variant="text" to="/riwayat" append-icon="mdi-arrow-right">
+            Riwayat
+          </v-btn>
         </div>
-        <v-btn variant="text" to="/riwayat" append-icon="mdi-arrow-right">
-          Riwayat
-        </v-btn>
-      </div>
 
-      <UsageTrend :points="trend" />
-    </section>
+        <UsageTrend :points="trend" />
+      </section>
+
+      <section v-if="balanceTrend.length > 1" class="surface-card trend-card">
+        <div class="card-head">
+          <div>
+            <h2>Tren sisa kWh</h2>
+            <p>Angka meter, naik saat isi token.</p>
+          </div>
+          <v-btn variant="text" to="/riwayat" append-icon="mdi-arrow-right">
+            Riwayat
+          </v-btn>
+        </div>
+
+        <UsageTrend :points="balanceTrend" unit="kWh" label="Tren sisa kWh" />
+      </section>
+    </div>
 
     <section class="surface-card recent-card">
       <div class="card-head">
