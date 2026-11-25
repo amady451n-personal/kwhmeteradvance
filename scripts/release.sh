@@ -1,7 +1,9 @@
 #!/usr/bin/env bash
 # Interactive release driver. No CLI params: pick a menu number.
 #
-# Config lives in scripts/release.env (untracked):
+# Config lives in ~/.config/meteran/release.env (outside the repo, so no update
+# can remove it) or $RELEASE_ENV; an in-repo scripts/release.env is migrated
+# once. See scripts/release.env.example for the fields.
 #   STB_HOST=192.168.1.10
 #   STB_USER=armbian
 #   STB_DIR=/home/armbian/dipsik
@@ -55,11 +57,25 @@ ask_yes() {
   esac
 }
 
+# Config lives outside the repo so no checkout/update can delete it.
+CONFIG_DIR="${XDG_CONFIG_HOME:-$HOME/.config}/meteran"
+CONFIG_FILE="$CONFIG_DIR/release.env"
+
 load_config() {
-  local file="$ROOT/scripts/release.env"
+  local legacy="$ROOT/scripts/release.env"
+  if [ -z "${RELEASE_ENV:-}" ] && [ ! -f "$CONFIG_FILE" ] && [ -f "$legacy" ]; then
+    # one-time move of the old in-repo file, which stays in place as a backup
+    mkdir -p "$CONFIG_DIR"
+    cp "$legacy" "$CONFIG_FILE"
+    chmod 600 "$CONFIG_FILE"
+    note "config lama dipindahkan ke $CONFIG_FILE"
+  fi
+
+  local file="${RELEASE_ENV:-$CONFIG_FILE}"
   if [ ! -f "$file" ]; then
-    warn "scripts/release.env belum ada."
-    warn "salin dari scripts/release.env.example lalu isi STB_HOST/STB_USER/STB_DIR."
+    warn "$file belum ada."
+    warn "mkdir -p $CONFIG_DIR && cp scripts/release.env.example $CONFIG_FILE"
+    warn "lalu isi STB_HOST/STB_USER/STB_DIR."
     exit 1
   fi
   # shellcheck disable=SC1090
@@ -185,7 +201,7 @@ EOF
 load_config
 menu
 while true; do
-  read -r -p 'Pilih: ' choice
+  read -r -p 'Pilih: ' choice || exit 0
   start=$SECONDS
   case "$choice" in
     1) build_image ;;

@@ -188,7 +188,8 @@ docker buildx build --platform linux/arm64 -t meteranadvanced:latest --load -f b
 ### Rilis ke STB
 
 ```bash
-cp scripts/release.env.example scripts/release.env   # isi STB_HOST/STB_USER/STB_DIR
+mkdir -p ~/.config/meteran && cp scripts/release.env.example ~/.config/meteran/release.env   # isi STB_HOST/STB_USER/STB_DIR
+# config sengaja di luar repo: update/checkout tidak bisa menghapusnya
 bash scripts/release.sh      # menu: build → push → scp → pull → deploy
 bash scripts/backup.sh       # snapshot DB di STB
 ```
