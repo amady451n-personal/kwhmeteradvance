@@ -14,3 +14,6 @@ scripts/release.env
 
 # Meteran data folder when compose uses the default bind mount
 /data/
+
+# Local compose values; copy .env.example on a fresh checkout.
+/.env

@@ -39,9 +39,9 @@ remote() {
   run ssh "$STB_USER@$STB_HOST" "cd '$STB_DIR' && $cmd"
 }
 
-# Shell snippet run on the STB: resolve METERAN_DATA_DIR from .env into $d and
-# make sure the host folder exists (docker would otherwise create it as root).
-DATA_CMD='set -a; . ./.env; set +a; d="${METERAN_DATA_DIR:-./data}"; mkdir -p "$d"; d=$(cd "$d" && pwd)'
+# Shell snippet run on the STB: make sure .env exists, resolve METERAN_DATA_DIR
+# from it into $d, and create the host folder (docker would create it as root).
+DATA_CMD='[ -f .env ] || cp .env.example .env; set -a; . ./.env; set +a; d="${METERAN_DATA_DIR:-./data}"; mkdir -p "$d"; d=$(cd "$d" && pwd)'
 
 ask_yes() {
   local prompt="$1" answer
@@ -129,7 +129,7 @@ deploy() {
     printf 'Dibatalkan.\n'
     return 0
   fi
-  step "1/5 siapkan folder data di host"
+  step "1/5 siapkan .env dan folder data di host"
   remote "$DATA_CMD"
   # load first: the running container keeps the old image until up -d recreates it
   step "2/5 load image di STB (container lama masih jalan)"
@@ -173,8 +173,10 @@ reset_import() {
 }
 
 status() {
-  local port
-  port="$(awk -F= '/^METERAN_PORT=/{gsub(/[ \t]/, "", $2); print $2}' "$ROOT/.env")"
+  local port env_file
+  env_file="$ROOT/.env"
+  [ -f "$env_file" ] || env_file="$ROOT/.env.example"
+  port="$(awk -F= '/^METERAN_PORT=/{gsub(/[ \t]/, "", $2); print $2}' "$env_file")"
   port="${port:-8080}"
   say "status container"
   run docker compose ps meteranadvanced

@@ -42,3 +42,11 @@ supaya DB bisa di-backup, diinspeksi, dan tidak hilang saat `docker volume prune
 Container berjalan sebagai `${METERAN_UID}:${METERAN_GID}` (default `1000:1000`)
 agar file SQLite milik user host. Reset & impor kini mengosongkan isi folder,
 bukan `docker compose down -v`.
+
+## Revisi 2026-11-25 21:52 WIB
+
+`.env` tidak lagi di-track (menggantikan poin 4). File `.env.example` yang
+di-track memuat default; `release.sh` menyalinnya menjadi `.env` di STB bila
+belum ada. Alasan: `.env` yang tracked membuat setiap perubahan port/uid di
+server tampil sebagai perubahan belum di-stage dan bisa menggagalkan
+`git pull --ff-only`.
