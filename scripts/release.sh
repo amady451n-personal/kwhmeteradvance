@@ -208,8 +208,8 @@ reset_import() {
   # copy first: the container user cannot rely on the host file's permissions
   remote "cp '$src' /tmp/legacy-meters.db" || die "gagal menyalin $src"
   step "4/6 impor (importer menolak bila DB tidak kosong)"
-  # import writes into the bind-mounted folder as the host uid
-  remote "$DATA_CMD; docker run --rm --user \"\$(id -u):\$(id -g)\" -v /tmp/legacy-meters.db:/import/meters.db:ro -v \"\$d:/data\" '$IMAGE' import --from /import/meters.db"
+  # import writes into the bind-mounted folder; the entrypoint drops to these ids
+  remote "$DATA_CMD; docker run --rm -e METERAN_UID=\"\${METERAN_UID:-1000}\" -e METERAN_GID=\"\${METERAN_GID:-1000}\" -v /tmp/legacy-meters.db:/import/meters.db:ro -v \"\$d:/data\" '$IMAGE' import --from /import/meters.db"
   step "5/6 bersihkan berkas sementara"
   remote "rm -f /tmp/legacy-meters.db"
   step "6/6 nyalakan container"

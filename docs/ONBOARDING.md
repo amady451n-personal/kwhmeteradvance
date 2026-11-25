@@ -197,6 +197,14 @@ bash scripts/backup.sh       # snapshot DB
 
 Skrip bisa dijalankan di laptop maupun langsung di STB. `STB_MODE=auto` (default) memilih `local` kalau `STB_DIR` ada di mesin itu, selain itu `remote` lewat ssh. Di mode `local`: scp dan `docker load` dilewati, build memakai `docker build` native kalau mesinnya arm64. Paksa dengan `STB_MODE=local|remote` di `~/.config/meteran/release.env`.
 
+### Troubleshooting: `attempt to write a readonly database (8)` / `unable to open database file (14)`
+
+Folder data atau `meteran.db` bukan milik `${METERAN_UID}:${METERAN_GID}` (biasanya karena dibuat `root` oleh Docker atau impor yang dijalankan via `sudo`). Entrypoint memperbaikinya otomatis saat container mulai sebagai root, lalu menolak start dengan pesan jelas kalau `/data` tetap tidak bisa ditulis. Perbaikan manual sekali jalan:
+
+```bash
+sudo chown -R 1000:1000 <METERAN_DATA_DIR>
+```
+
 Deploy memuat image baru dulu (`docker load`) baru `docker compose up -d` di mode remote, jadi container lama tetap melayani sampai image siap. Menu 6 mengosongkan folder data host (`METERAN_DATA_DIR`) lalu mengimpor `meters.db` aplikasi basic (hanya boleh saat DB kosong). Container `kwhmeter basic` tidak pernah disentuh skrip ini.
 
 Data ada di folder host (`METERAN_DATA_DIR`, default `./data` di samping `compose.yml`), bukan named volume. Kalau sebuah STB masih punya volume lama `meteranadvanced-data`, salin isinya sekali sebelum deploy:

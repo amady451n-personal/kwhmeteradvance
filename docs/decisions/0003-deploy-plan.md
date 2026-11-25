@@ -58,3 +58,12 @@ meng-`chown -R` `/data` ke `${METERAN_UID}:${METERAN_GID}`, lalu `exec su-exec`
 sehingga proses aplikasi tetap nonroot. Alasan: folder bind mount yang dibuat
 Docker (atau sebelum `mkdir` skrip) milik root, dan `user: 1000:1000` membuat
 SQLite gagal dengan `unable to open database file (14)`.
+
+## Revisi 2026-11-25 23:01 WIB
+
+`attempt to write a readonly database (8)` muncul saat `meteran.db` tertinggal
+milik root (impor dijalankan sebagai root) sementara app jalan sebagai
+`METERAN_UID`. Entrypoint kini: `chown -R` `/data`, cek tulis folder + file DB
+sebagai uid target, dan `exit 1` dengan pesan perbaikan bila gagal (tidak lagi
+menyembunyikan error chown). Impor di `release.sh` juga meneruskan
+`METERAN_UID`/`METERAN_GID` sehingga file hasil impor langsung milik uid app.
