@@ -107,14 +107,13 @@ reset_import() {
     printf 'Dibatalkan.\n'
     return 0
   }
-  remote "docker compose down -v meteranadvanced"
+  remote "docker compose down -v"
 
   local src
   read -r -p "Path meters.db di STB (milik kwhmeter basic): " src
   [ -n "$src" ] || die "path kosong"
-  remote "[ -f '$src' ]"
   # copy first: the container user cannot rely on the host file's permissions
-  remote "cp '$src' /tmp/legacy-meters.db"
+  remote "cp '$src' /tmp/legacy-meters.db" || die "gagal menyalin $src"
   # import runs against the fresh named volume; log output stays visible
   remote "docker run --rm -v /tmp/legacy-meters.db:/import/meters.db:ro -v meteranadvanced-data:/data '$IMAGE' import --from /import/meters.db"
   remote "rm -f /tmp/legacy-meters.db"
