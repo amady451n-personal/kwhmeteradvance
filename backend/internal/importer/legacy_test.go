@@ -92,3 +92,37 @@ func TestCommitWritesOnceAndRefusesNonEmptyDB(t *testing.T) {
 		t.Fatalf("second commit must be refused, got %v", err)
 	}
 }
+
+func TestScanAcceptsRealAndTextCost(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "meters.db")
+	conn, err := sql.Open("sqlite", path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, err = conn.Exec(`create table readings (
+		id integer primary key, meter_name text, reading real, timestamp text,
+		notes text, recharge_amount real, cost)`)
+	if err == nil {
+		_, err = conn.Exec(`insert into readings values
+			(1, 'main', 100, '2026-11-24 05:59:00', null, 10, 50000.75),
+			(2, 'main', 120, '2026-11-25 06:10:00', null, 20, '12000')`)
+	}
+	_ = conn.Close()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	preview, err := Scan(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(preview.Valid) != 2 {
+		t.Fatalf("valid = %+v", preview.Rejected)
+	}
+	if got := *preview.Valid[0].Cost; got != 50001 {
+		t.Fatalf("real cost = %d", got)
+	}
+	if got := *preview.Valid[1].Cost; got != 12000 {
+		t.Fatalf("text cost = %d", got)
+	}
+}

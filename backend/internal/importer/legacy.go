@@ -5,10 +5,29 @@ package importer
 import (
 	"database/sql"
 	"fmt"
+	"math"
+	"strconv"
 	"strings"
 
 	"meteran/internal/store"
 )
+
+// numeric accepts the driver values a legacy cost column can produce.
+func numeric(v any) (float64, bool) {
+	switch x := v.(type) {
+	case int64:
+		return float64(x), true
+	case float64:
+		return x, true
+	case []byte:
+		f, err := strconv.ParseFloat(strings.TrimSpace(string(x)), 64)
+		return f, err == nil
+	case string:
+		f, err := strconv.ParseFloat(strings.TrimSpace(x), 64)
+		return f, err == nil
+	}
+	return 0, false
+}
 
 // Issue is one problem attached to an imported row.
 type Issue struct {
@@ -36,13 +55,13 @@ type Stats struct {
 
 // Preview is the FR-104 grouping.
 type Preview struct {
-	Rows          int
-	MainRows      int
+	Rows           int
+	MainRows       int
 	OtherMeterRows int
-	Valid         []Row
-	NeedsConfirm  []Row
-	Rejected      []Row
-	Stats         Stats // importable rows only
+	Valid          []Row
+	NeedsConfirm   []Row
+	Rejected       []Row
+	Stats          Stats // importable rows only
 }
 
 // Scan reads a legacy database. The file is opened read-only and never written.
@@ -66,7 +85,8 @@ func Scan(path string) (Preview, error) {
 	for rows.Next() {
 		var id, meter sql.NullString
 		var reading, recharge sql.NullFloat64
-		var cost sql.NullInt64
+		// legacy cost can be INTEGER, REAL, or TEXT depending on the sqlite version
+		var cost any
 		var ts, notes sql.NullString
 		if err := rows.Scan(&id, &meter, &reading, &ts, &notes, &recharge, &cost); err != nil {
 			return Preview{}, err
@@ -82,8 +102,9 @@ func Scan(path string) (Preview, error) {
 		if recharge.Valid {
 			row.RechargeAmount = &recharge.Float64
 		}
-		if cost.Valid {
-			row.Cost = &cost.Int64
+		if v, ok := numeric(cost); ok {
+			n := int64(math.Round(v))
+			row.Cost = &n
 		}
 		if meter.Valid && !strings.EqualFold(strings.TrimSpace(meter.String), "main") {
 			p.OtherMeterRows++
