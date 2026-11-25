@@ -17,3 +17,4 @@ scripts/release.env
 
 # Local compose values; copy .env.example on a fresh checkout.
 /.env
+/backups/

@@ -188,14 +188,16 @@ docker buildx build --platform linux/arm64 -t meteranadvanced:latest --load -f b
 ### Rilis ke STB
 
 ```bash
-mkdir -p ~/.config/meteran && cp scripts/release.env.example ~/.config/meteran/release.env   # isi STB_HOST/STB_USER/STB_DIR
+mkdir -p ~/.config/meteran && cp scripts/release.env.example ~/.config/meteran/release.env   # isi STB_DIR; STB_HOST/STB_USER untuk mode remote
 # config sengaja di luar repo: update/checkout tidak bisa menghapusnya
 bash scripts/release.sh      # menu: build → push → scp → pull → deploy
-# .env tidak di-track; menu 5 menyalin .env.example → .env di STB kalau belum ada
-bash scripts/backup.sh       # snapshot DB di STB
+# .env tidak di-track; menu 5 menyalin .env.example → .env kalau belum ada
+bash scripts/backup.sh       # snapshot DB
 ```
 
-Deploy memuat image baru dulu (`docker load`) baru `docker compose up -d`, jadi container lama tetap melayani sampai image siap. Menu 6 mengosongkan folder data host (`METERAN_DATA_DIR`) lalu mengimpor `meters.db` aplikasi basic (hanya boleh saat DB kosong). Container `kwhmeter basic` tidak pernah disentuh skrip ini.
+Skrip bisa dijalankan di laptop maupun langsung di STB. `STB_MODE=auto` (default) memilih `local` kalau `STB_DIR` ada di mesin itu, selain itu `remote` lewat ssh. Di mode `local`: scp dan `docker load` dilewati, build memakai `docker build` native kalau mesinnya arm64. Paksa dengan `STB_MODE=local|remote` di `~/.config/meteran/release.env`.
+
+Deploy memuat image baru dulu (`docker load`) baru `docker compose up -d` di mode remote, jadi container lama tetap melayani sampai image siap. Menu 6 mengosongkan folder data host (`METERAN_DATA_DIR`) lalu mengimpor `meters.db` aplikasi basic (hanya boleh saat DB kosong). Container `kwhmeter basic` tidak pernah disentuh skrip ini.
 
 Data ada di folder host (`METERAN_DATA_DIR`, default `./data` di samping `compose.yml`), bukan named volume. Kalau sebuah STB masih punya volume lama `meteranadvanced-data`, salin isinya sekali sebelum deploy:
 

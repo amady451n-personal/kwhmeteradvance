@@ -36,7 +36,11 @@ run() {
 
 remote() {
   local cmd="$1"
-  run ssh "$STB_USER@$STB_HOST" "cd '$STB_DIR' && $cmd"
+  if [ "$MODE" = "local" ]; then
+    run bash -c "cd '$WORKDIR' && $cmd"
+  else
+    run ssh "$STB_USER@$STB_HOST" "cd '$WORKDIR' && $cmd"
+  fi
 }
 
 # Shell snippet run on the STB: make sure .env exists, resolve METERAN_DATA_DIR
@@ -75,20 +79,47 @@ load_config() {
   if [ ! -f "$file" ]; then
     warn "$file belum ada."
     warn "mkdir -p $CONFIG_DIR && cp scripts/release.env.example $CONFIG_FILE"
-    warn "lalu isi STB_HOST/STB_USER/STB_DIR."
+    warn "lalu isi STB_DIR (wajib) dan STB_HOST/STB_USER (hanya mode remote)."
     exit 1
   fi
   # shellcheck disable=SC1090
   . "$file"
-  : "${STB_HOST:?STB_HOST kosong}" "${STB_USER:?STB_USER kosong}" "${STB_DIR:?STB_DIR kosong}"
   IMAGE="${IMAGE:-meteranadvanced:latest}"
+
+  # auto: local when this checkout is the deploy folder (running on the host),
+  # remote when it only exists on the other machine.
+  MODE="${STB_MODE:-auto}"
+  if [ "$MODE" = "auto" ]; then
+    if [ -n "${STB_DIR:-}" ] && [ -d "$STB_DIR" ]; then
+      MODE=local
+    else
+      MODE=remote
+    fi
+  fi
+  case "$MODE" in
+    local)
+      WORKDIR="$ROOT"
+      note "mode lokal: semua perintah dijalankan langsung di mesin ini"
+      ;;
+    remote)
+      : "${STB_HOST:?STB_HOST kosong}" "${STB_USER:?STB_USER kosong}" "${STB_DIR:?STB_DIR kosong}"
+      WORKDIR="$STB_DIR"
+      note "mode remote: perintah dijalankan lewat ssh $STB_USER@$STB_HOST"
+      ;;
+    *) die "STB_MODE harus auto|local|remote (sekarang: $MODE)" ;;
+  esac
 }
 
 build_image() {
   local start=$SECONDS
   say "build arm64 image $IMAGE"
   note "tahap 1/2: npm build + go build (biasanya 1-3 menit, output di bawah)"
-  run docker buildx build --platform linux/arm64 -t "$IMAGE" --load -f backend/Dockerfile .
+  if [ "$(uname -m)" = "aarch64" ]; then
+    # already on arm64: native build, no buildx/qemu needed
+    run docker build -t "$IMAGE" -f backend/Dockerfile .
+  else
+    run docker buildx build --platform linux/arm64 -t "$IMAGE" --load -f backend/Dockerfile .
+  fi
   note "build selesai dalam $((SECONDS - start))s"
 
   say "package image -> $TARBALL"
@@ -110,6 +141,10 @@ push_git() {
 }
 
 scp_image() {
+  if [ "$MODE" = "local" ]; then
+    note "mode lokal: image sudah ada di mesin ini, scp dilewati"
+    return 0
+  fi
   [ -f "$TARBALL" ] || die "tarball belum ada: $TARBALL (jalankan menu 1)"
   say "scp image -> $STB_HOST:$REMOTE_TARBALL"
   note "transfer $(du -h "$TARBALL" | cut -f1), progress bar muncul di bawah"
@@ -118,12 +153,14 @@ scp_image() {
 }
 
 pull_git() {
-  say "git pull di STB"
+  say "git pull --ff-only"
   remote "git pull --ff-only"
 }
 
 deploy() {
-  [ -f "$TARBALL" ] || warn "tarball lokal tidak ada; pastikan image sudah di-scp ke STB"
+  if [ "$MODE" = "remote" ] && [ ! -f "$TARBALL" ]; then
+    warn "tarball lokal tidak ada; pastikan image sudah di-scp ke STB"
+  fi
   say "deploy $IMAGE di STB (container lama tetap jalan sampai image baru siap)"
   if ! ask_yes "Lanjut deploy?"; then
     printf 'Dibatalkan.\n'
@@ -131,15 +168,23 @@ deploy() {
   fi
   step "1/5 siapkan .env dan folder data di host"
   remote "$DATA_CMD"
-  # load first: the running container keeps the old image until up -d recreates it
-  step "2/5 load image di STB (container lama masih jalan)"
-  remote "docker load -i '$REMOTE_TARBALL'"
+  if [ "$MODE" = "local" ]; then
+    step "2/5 image hasil build lokal, docker load dilewati"
+  else
+    # load first: the running container keeps the old image until up -d recreates it
+    step "2/5 load image di STB (container lama masih jalan)"
+    remote "docker load -i '$REMOTE_TARBALL'"
+  fi
   step "3/5 jalankan container baru"
   remote "docker compose up -d meteranadvanced"
   step "4/5 bersihkan image dangling"
   remote "docker image prune -f"
-  step "5/5 hapus tarball di /tmp"
-  remote "rm -f '$REMOTE_TARBALL'"
+  if [ "$MODE" = "local" ]; then
+    step "5/5 tidak ada tarball di /tmp yang perlu dihapus"
+  else
+    step "5/5 hapus tarball di /tmp"
+    remote "rm -f '$REMOTE_TARBALL'"
+  fi
   status
 }
 
@@ -173,28 +218,24 @@ reset_import() {
 }
 
 status() {
-  local port env_file
-  env_file="$ROOT/.env"
-  [ -f "$env_file" ] || env_file="$ROOT/.env.example"
-  port="$(awk -F= '/^METERAN_PORT=/{gsub(/[ \t]/, "", $2); print $2}' "$env_file")"
-  port="${port:-8080}"
   say "status container"
-  run docker compose ps meteranadvanced
-  say "health http://localhost:$port/api/health"
-  run curl -fsS http://localhost:$port/api/health" || warn "health belum OK
+  remote "docker compose ps meteranadvanced"
+  say "health /api/health"
+  # port comes from the .env of the machine that runs compose
+  remote 'set -a; . ./.env 2>/dev/null; set +a; curl -fsS "http://localhost:${METERAN_PORT:-8080}/api/health"' || warn "health belum OK"
 }
 
 menu() {
   cat <<'EOF'
 
-  meteranadvanced release
+  meteranadvanced release   (mode: STB_MODE=auto|local|remote)
   -----------------------
-  1) build & package   (buildx arm64 + docker save | gzip)
-  2) git push          (lokal)
-  3) scp image         (ke STB)
-  4) git pull          (di STB)
-  5) deploy            (load -> compose up -d -> prune -> rm /tmp)
-  6) reset & import    (down -v -> impor meters.db kwhmeter basic)
+  1) build & package   (native di arm64, buildx di amd64 + docker save)
+  2) git push          (dari repo ini)
+  3) scp image         (hanya mode remote)
+  4) git pull          (di folder deploy)
+  5) deploy            (load bila remote -> compose up -d -> prune -> rm /tmp)
+  6) reset & import    (down -> kosongkan folder data -> impor meters.db basic)
   7) status / health
   0) keluar
 EOF

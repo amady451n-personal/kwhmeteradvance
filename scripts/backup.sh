@@ -17,9 +17,19 @@ fi
 # shellcheck disable=SC1091
 . "${RELEASE_ENV:-$CONFIG_FILE}"
 
-: "${STB_HOST:?}" "${STB_USER:?}" "${STB_DIR:?}"
+MODE="${STB_MODE:-auto}"
+if [ "$MODE" = "auto" ]; then
+  if [ -n "${STB_DIR:-}" ] && [ -d "$STB_DIR" ]; then MODE=local; else MODE=remote; fi
+fi
+if [ "$MODE" = "remote" ]; then
+  : "${STB_HOST:?STB_HOST kosong di release.env}" "${STB_USER:?STB_USER kosong di release.env}" "${STB_DIR:?STB_DIR kosong di release.env}"
+  WORKDIR="$STB_DIR"
+else
+  WORKDIR="$ROOT"
+fi
+
 IMAGE="${IMAGE:-meteranadvanced:latest}"
-BACKUP_DIR="${BACKUP_DIR:-$STB_DIR/backups}"
+BACKUP_DIR="${BACKUP_DIR:-$WORKDIR/backups}"
 BACKUP_KEEP="${BACKUP_KEEP:-14}"
 STAMP="$(date +%F-%H%M)"
 
@@ -31,9 +41,16 @@ docker run --rm --user \"\$(id -u):\$(id -g)\" -v \"\$d:/data\" -v '$BACKUP_DIR:
 ls -1t '$BACKUP_DIR'/meteran-*.db | tail -n +$((BACKUP_KEEP + 1)) | xargs -r rm -f
 ls -lh '$BACKUP_DIR' | tail -n 5"
 
-if [ "${DRY_RUN:-0}" = "1" ]; then
-  printf '$ ssh %s@%s %q\n' "$STB_USER" "$STB_HOST" "$cmd"
-  exit 0
+if [ "$MODE" = "local" ]; then
+  if [ "${DRY_RUN:-0}" = "1" ]; then
+    printf '$ cd %q && %q\n' "$WORKDIR" "$cmd"
+    exit 0
+  fi
+  bash -c "cd '$WORKDIR' && $cmd"
+else
+  if [ "${DRY_RUN:-0}" = "1" ]; then
+    printf '$ ssh %s@%s %q\n' "$STB_USER" "$STB_HOST" "$cmd"
+    exit 0
+  fi
+  ssh "$STB_USER@$STB_HOST" "$cmd"
 fi
-
-ssh "$STB_USER@$STB_HOST" "$cmd"
