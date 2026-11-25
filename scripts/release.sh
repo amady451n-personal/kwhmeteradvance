@@ -107,13 +107,13 @@ deploy() {
   fi
   # load first: the running container keeps the old image until up -d recreates it
   step "1/4 load image di STB (container lama masih jalan)"
-  run docker load -i '$REMOTE_TARBALL'
+  run docker load -i "$REMOTE_TARBALL"
   step "2/4 jalankan container baru"
   run docker compose up -d meteranadvanced
   step "3/4 bersihkan image dangling"
   run docker image prune -f
   step "4/4 hapus tarball di /tmp"
-  run rm -f '$REMOTE_TARBALL'
+  run rm -f "$REMOTE_TARBALL"
   status
 }
 
