@@ -29,6 +29,8 @@ func Handler() http.Handler {
 			if statErr == nil && !info.IsDir() {
 				if strings.HasPrefix(name, "assets/") {
 					w.Header().Set("Cache-Control", "public, max-age=31536000, immutable")
+				} else {
+					w.Header().Set("Cache-Control", "no-store")
 				}
 				fileServer.ServeHTTP(w, r)
 				return

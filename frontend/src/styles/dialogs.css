@@ -1,0 +1,395 @@
+/* Dialogs */
+
+.dialog-card {
+  overflow: hidden;
+  border-radius: 16px;
+}
+
+.dialog-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 20px 24px 4px;
+}
+
+.dialog-head h2 {
+  font-size: 20px;
+  font-weight: 700;
+  letter-spacing: -0.03em;
+}
+
+.dialog-head p {
+  margin-top: 2px;
+  color: rgb(var(--v-theme-on-surface-variant));
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.dialog-body {
+  padding: 16px 24px 20px !important;
+}
+
+.field {
+  margin-bottom: 12px;
+}
+
+.switch-field {
+  margin: 4px 0 8px;
+}
+
+.topup-fields {
+  padding-top: 4px;
+}
+
+.form-alert {
+  margin: 8px 0 12px;
+}
+
+.preview-note {
+  margin: 12px 0;
+  color: rgb(var(--v-theme-on-surface-variant));
+  font-size: 12px;
+  line-height: 1.55;
+}
+
+.balance-preview {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 10px 12px;
+  border-radius: 8px;
+  background: rgba(var(--v-theme-primary), 0.07);
+  color: rgb(var(--v-theme-on-surface-variant));
+  font-size: 12px;
+}
+
+.balance-preview strong {
+  color: rgb(var(--v-theme-on-surface));
+  font-size: 13px;
+}
+
+.dialog-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  padding-top: 8px;
+}
+
+.confirm-copy {
+  color: rgb(var(--v-theme-on-surface-variant));
+  font-size: 14px;
+  line-height: 1.5;
+}
+
+.app-toast .v-snackbar__content {
+  background: rgb(var(--v-theme-on-surface));
+  color: rgb(var(--v-theme-surface));
+  border-radius: 12px;
+}
+
+.app-toast .v-btn {
+  color: rgb(var(--v-theme-surface));
+}
+
+/* Responsive */
+
+@media (max-width: 959px) {
+  .dashboard-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .report-facts {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  /* Touch targets: 44px minimum on touch layouts. */
+  .v-btn {
+    min-height: 44px;
+  }
+
+  .v-btn--icon {
+    min-width: 44px;
+  }
+
+  .v-field__clearable {
+    display: grid;
+    place-items: center;
+    min-width: 44px;
+    min-height: 44px;
+    margin-inline-end: -12px;
+  }
+
+  .v-field__clearable .v-icon {
+    width: 44px;
+    height: 44px;
+  }
+
+  .denom-chip {
+    min-height: 44px;
+  }
+
+  .denom-chip .v-chip__close {
+    min-width: 44px;
+    min-height: 44px;
+  }
+}
+
+@media (max-width: 599px) {
+  .page {
+    padding: 18px 16px calc(104px + env(safe-area-inset-bottom));
+  }
+
+  .page-header {
+    align-items: flex-start;
+    margin-bottom: 16px;
+  }
+
+  .page-header > .v-btn {
+    width: 100%;
+  }
+
+  .balance-card {
+    padding: 20px;
+  }
+
+  .balance-top {
+    grid-template-columns: 1fr;
+    gap: 18px;
+  }
+
+  .balance-value {
+    font-size: clamp(40px, 13vw, 56px);
+  }
+
+  .balance-side {
+    flex-direction: row;
+    align-items: flex-start;
+    gap: 28px;
+  }
+
+  .balance-metric {
+    text-align: left;
+  }
+
+  .balance-metric span {
+    letter-spacing: 0.04em;
+  }
+
+  .runway-legend {
+    grid-template-columns: 1fr;
+    gap: 8px;
+  }
+
+  .runway-item {
+    grid-template-columns: 10px 110px minmax(0, 1fr);
+  }
+
+  .runway-item strong {
+    grid-column: 3;
+    text-align: right;
+  }
+
+  .usage-card,
+  .facts-card,
+  .recent-card {
+    padding: 18px;
+  }
+
+  .usage-plot {
+    height: 132px;
+  }
+
+  .usage-bars,
+  .usage-labels {
+    gap: 5px;
+  }
+
+  .usage-label {
+    font-size: 9px;
+  }
+
+  .token-summary {
+    padding: 20px;
+    gap: 18px;
+  }
+
+  .token-target {
+    min-width: 0;
+    text-align: left;
+  }
+
+  .token-row {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 12px;
+    padding: 16px;
+  }
+
+  .token-side {
+    justify-content: space-between;
+  }
+
+  .report-card {
+    padding: 20px;
+  }
+
+  .report-head {
+    flex-direction: column;
+    gap: 12px;
+  }
+
+  .report-range {
+    text-align: left;
+  }
+
+  .settings-card {
+    padding: 18px;
+  }
+
+  .info-row {
+    align-items: flex-start;
+  }
+
+  .dialog-card.v-dialog--fullscreen,
+  .v-dialog--fullscreen .dialog-card {
+    display: flex;
+    flex-direction: column;
+    height: 100%;
+    border-radius: 0;
+  }
+
+  .v-dialog--fullscreen .dialog-body {
+    flex: 1;
+    overflow: auto;
+  }
+
+  .v-dialog--fullscreen .dialog-actions,
+  .v-dialog--fullscreen .dialog-body .dialog-actions {
+    position: sticky;
+    bottom: 0;
+    padding-bottom: calc(8px + env(safe-area-inset-bottom));
+    background: rgb(var(--v-theme-surface));
+  }
+
+  .reading-row {
+    grid-template-columns: minmax(0, 1fr) auto;
+    gap: 6px 12px;
+    padding: 14px 0;
+  }
+
+  .reading-date {
+    flex-direction: row;
+    grid-column: 1;
+    grid-row: 1;
+    align-items: baseline;
+    gap: 6px;
+  }
+
+  .reading-main {
+    grid-column: 1 / -1;
+    grid-row: 2;
+  }
+
+  .reading-metrics {
+    grid-column: 1 / -1;
+    grid-row: 3;
+    justify-content: flex-start;
+    gap: 16px;
+  }
+
+  .reading-metric {
+    text-align: left;
+  }
+
+  .reading-actions {
+    grid-column: 2;
+    grid-row: 1;
+    justify-self: end;
+  }
+}
+
+@media (max-width: 479px) {
+  .filter-fields {
+    grid-template-columns: 1fr;
+  }
+
+  .denom-add {
+    align-items: flex-start;
+  }
+
+  .denom-field {
+    max-width: none;
+    width: 100%;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}
+
+/* Print */
+
+@page {
+  margin: 16mm;
+}
+
+@media print {
+  body {
+    background: #fff;
+    color: #111;
+  }
+
+  .v-app-bar,
+  .v-navigation-drawer,
+  .bottom-nav,
+  .mobile-fab,
+  .v-snackbar,
+  .print-hide {
+    display: none !important;
+  }
+
+  .v-main {
+    padding: 0 !important;
+  }
+
+  .page {
+    max-width: none;
+    padding: 0;
+  }
+
+  .report-card {
+    padding: 0;
+    border: 0;
+    border-radius: 0;
+    background: #fff;
+  }
+
+  .report-card,
+  .report-card * {
+    color: #111 !important;
+  }
+
+  .report-card .v-chip {
+    border: 1px solid #999;
+    background: transparent !important;
+  }
+
+  .report-head,
+  .report-facts,
+  .report-foot {
+    border-color: #bbb;
+  }
+
+  .reading-row {
+    break-inside: avoid;
+  }
+}

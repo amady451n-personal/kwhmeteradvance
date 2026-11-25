@@ -2,7 +2,9 @@ package main
 
 import (
 	"fmt"
+	"io"
 	"log"
+	"os"
 	"strings"
 
 	"meteran/internal/importer"
@@ -36,7 +38,26 @@ func runImport(args []string) int {
 	}
 
 	for _, path := range paths {
-		preview, err := importer.Scan(path)
+		// The legacy file is usually mounted read-only, and SQLite may want to
+		// recover a WAL; work on a writable copy instead.
+		tmp, err := os.CreateTemp("", "legacy-*.db")
+		if err != nil {
+			log.Printf("temp: %v", err)
+			return 1
+		}
+		src, err := os.Open(path)
+		if err == nil {
+			_, err = io.Copy(tmp, src)
+			src.Close()
+		}
+		tmp.Close()
+		if err != nil {
+			os.Remove(tmp.Name())
+			log.Printf("%s: %v", path, err)
+			return 1
+		}
+		preview, err := importer.Scan(tmp.Name())
+		os.Remove(tmp.Name())
 		if err != nil {
 			log.Printf("%s: %v", path, err)
 			return 1

@@ -20,7 +20,9 @@ Kondisi repo saat ini: **frontend pratinjau saja**. Belum ada backend, API, SQLi
 | Routing | Vue Router | 5.5.1 |
 | Font/ikon | Plus Jakarta Sans Variable, MDI | 5.3.0 / 7.4.47 |
 | Tipe | `vue-tsc` | 3.3.14 |
-| Backend | belum ada (rencana: Go 1.25 + `modernc.org/sqlite`) | - |
+| Backend | Go 1.26 (stdlib mux) + `modernc.org/sqlite` | 1.26 |
+
+Backend: `backend/` (lihat `docs/superpowers/plans/2026-11-25-meteranadvanced-backend-deploy.md`). Satu binary statis arm64, `CGO_ENABLED=0`, SPA di-embed lewat `//go:embed`.
 
 Keputusan stack: `docs/decisions/0001-stack-frontend.md`. Rencana backend: `memory.md` bagian 0a.
 
@@ -59,7 +61,7 @@ Kontrak adalah sumber kebenaran tipe. Mode default `preview`: klien palsu menjaw
 | `frontend/src/composables/` | `useFocusReturn`: kembalikan fokus ke pemicu setelah dialog ditutup (Vuetify hanya melakukannya bila `activator` dipakai) |
 | `frontend/src/layouts/AppShell.vue` | Shell aplikasi: drawer >=960 px, rail >=600 px, bottom nav <600 px |
 | `frontend/src/plugins/vuetify.ts` | Token warna light/dark dan default komponen |
-| `frontend/src/styles/main.css` | Semua styling halaman (global) |
+| `frontend/src/styles/` | Global CSS dipecah per area (`main`, `dashboard`, `views`, `dialogs`), tiap file < 500 baris (NFR-11) |
 | `frontend/src/api/schema.d.ts` | Tipe hasil `openapi-typescript`; jangan diedit tangan |
 | `frontend/public/` | `manifest.webmanifest`, `sw.js`, `icon.svg` (PWA tanpa plugin) |
 | `scripts/generate-fixture.py` | Regenerasi fixture dari SQLite aplikasi basic |
@@ -67,6 +69,12 @@ Kontrak adalah sumber kebenaran tipe. Mode default `preview`: klien palsu menjaw
 | `infra/images.base.txt` | Image shared, jangan dihapus |
 | `infra/images.pulled.txt` | Image pull khusus proyek ini |
 | `compose.dev.yml` | Dev server Node di container, port 5173; mount `docs/api` read-only |
+| `backend/` | API Go: `cmd/meteran` (serve/import/backup), `internal/{store,httpapi,domain,auth,report,importer,web}` |
+| `compose.yml` | Produksi di STB: image `meteranadvanced:latest`, port dari `.env` (tracked), volume `meteranadvanced-data` |
+| `backend/Dockerfile` | Multi-stage: SPA (node, build-platform) → cross-compile arm64 → alpine runtime nonroot |
+| `scripts/release.sh` | Menu interaktif build/push/scp/pull/deploy/reset-impor/status |
+| `scripts/backup.sh` | Snapshot `VACUUM INTO` di STB, simpan N terakhir |
+| `scripts/check-contract.sh` | Bandingkan path+method `openapi.yaml` dengan `router.go` |
 | `PRD.md` | Sumber requirement (v1.16), kode FR/NFR/AC |
 | `DESIGN.md` | Arah visual: palet, tipografi, bentuk, motion, layout |
 | `memory.md` | Ringkasan kondisi aplikasi basic dan keputusan awal |
@@ -162,11 +170,38 @@ bash scripts/dev-images.sh list
 
 Debug layout: buka `/?debug` untuk overlay lebar viewport (kode di `main.ts`).
 
+### Backend
+
+```bash
+cd backend
+go test ./...                 # store, domain, httpapi, importer, report, web
+go run ./cmd/meteran          # METERAN_ADDR=:8080 METERAN_DB=/tmp/meteran.db
+bash ../scripts/check-contract.sh
+```
+
+Image arm64 (dibangun di amd64, tanpa qemu untuk stage build):
+
+```bash
+docker buildx build --platform linux/arm64 -t meteranadvanced:latest --load -f backend/Dockerfile .
+```
+
+### Rilis ke STB
+
+```bash
+cp scripts/release.env.example scripts/release.env   # isi STB_HOST/STB_USER/STB_DIR
+bash scripts/release.sh      # menu: build → push → scp → pull → deploy
+bash scripts/backup.sh       # snapshot DB di STB
+```
+
+Deploy memuat image baru dulu (`docker load`) baru `docker compose up -d`, jadi container lama tetap melayani sampai image siap. Menu 6 menghapus volume `meteranadvanced-data` lalu mengimpor `meters.db` aplikasi basic (hanya boleh saat DB kosong). Container `kwhmeter basic` tidak pernah disentuh skrip ini.
+
+Catatan verifikasi: antrean offline (`localStorage('meteran.queue.v1')`) belum diuji terhadap backend nyata di STB; uji manual (putus jaringan → tambah catatan → pulihkan) saat pertama kali server mode dipakai.
+
 ## Batasan yang membentuk keputusan
 
 - Server target arm64, RAM ketat (~512 MB bebas), aplikasi basic masih berjalan paralel.
 - Build hanya di mesin amd64 (WSL), server hanya menjalankan image.
-- Runtime akhir: distroless static nonroot, SPA dilayani Go, SQLite di-mount dari host.
+- Runtime akhir: alpine arm64 nonroot, SPA dilayani Go dari `//go:embed`, SQLite di named volume `meteranadvanced-data`.
 - API harus stabil agar backend Go bisa ditukar ke Rust bila target RAM menuntut.
 - PWA, Web Push, dan HTTPS wajib untuk fitur notifikasi dan instalasi.
 

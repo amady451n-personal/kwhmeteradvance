@@ -2,13 +2,15 @@
 package main
 
 import (
-	"crypto/sha256"
 	"context"
+	"crypto/rand"
+	"crypto/sha256"
 	"errors"
 	"log"
 	"net/http"
 	"os"
 	"os/signal"
+	"path/filepath"
 	"syscall"
 	"time"
 
@@ -21,8 +23,13 @@ import (
 var version = "dev"
 
 func main() {
-	if len(os.Args) > 1 && os.Args[1] == "import" {
-		os.Exit(runImport(os.Args[2:]))
+	if len(os.Args) > 1 {
+		switch os.Args[1] {
+		case "import":
+			os.Exit(runImport(os.Args[2:]))
+		case "backup":
+			os.Exit(runBackup(os.Args[2:]))
+		}
 	}
 
 	dbPath := env("METERAN_DB", "/data/meteran.db")
@@ -36,10 +43,11 @@ func main() {
 	if err := db.Migrate(); err != nil {
 		log.Fatalf("migrate: %v", err)
 	}
-	if secret := os.Getenv("METERAN_SECRET"); secret != "" {
-		sum := sha256.Sum256([]byte(secret))
-		db.Secret = sum[:]
+	secret, err := loadSecret()
+	if err != nil {
+		log.Fatalf("secret: %v", err)
 	}
+	db.Secret = secret
 
 	srv := &http.Server{
 		Addr: addr,
@@ -75,4 +83,29 @@ func env(key, fallback string) string {
 		return v
 	}
 	return fallback
+}
+
+// loadSecret gives the AES key for token codes. METERAN_SECRET wins; otherwise
+// a random 32-byte key is generated once inside the data volume, so the key
+// never sits in the repo and survives container restarts.
+func loadSecret() ([]byte, error) {
+	if v := os.Getenv("METERAN_SECRET"); v != "" {
+		sum := sha256.Sum256([]byte(v))
+		return sum[:], nil
+	}
+	path := env("METERAN_SECRET_FILE", "/data/secret")
+	if raw, err := os.ReadFile(path); err == nil && len(raw) == 32 {
+		return raw, nil
+	}
+	key := make([]byte, 32)
+	if _, err := rand.Read(key); err != nil {
+		return nil, err
+	}
+	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+		return nil, err
+	}
+	if err := os.WriteFile(path, key, 0o600); err != nil {
+		return nil, err
+	}
+	return key, nil
 }
