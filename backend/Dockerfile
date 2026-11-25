@@ -6,7 +6,9 @@ WORKDIR /app
 COPY frontend/package.json frontend/package-lock.json ./
 RUN npm ci
 COPY frontend/ ./
-RUN npm run build
+# Production SPA must talk to the Go API, not the preview client.
+ARG VITE_API_MODE=server
+RUN VITE_API_MODE=$VITE_API_MODE npm run build
 
 # Stage 2: cross-compile the single static arm64 binary with the SPA embedded.
 FROM --platform=$BUILDPLATFORM golang:1.26-alpine AS build
