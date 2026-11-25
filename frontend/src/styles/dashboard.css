@@ -442,6 +442,38 @@
   background: rgb(var(--v-theme-accent));
 }
 
+.trend-dot::after {
+  content: '';
+  position: absolute;
+  inset: -6px;
+}
+
+.trend-dot--active {
+  border-color: rgb(var(--v-theme-accent));
+}
+
+.trend-tip {
+  position: absolute;
+  z-index: 3;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  padding: 5px 8px;
+  border-radius: 6px;
+  background: rgb(var(--v-theme-on-surface));
+  color: rgb(var(--v-theme-surface));
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.18);
+  font-size: 10px;
+  line-height: 1.25;
+  white-space: nowrap;
+  pointer-events: none;
+  transform: translate(-50%, calc(-100% - 10px));
+}
+
+.trend-tip strong {
+  font-size: 11px;
+}
+
 .trend-foot {
   display: flex;
   align-items: baseline;

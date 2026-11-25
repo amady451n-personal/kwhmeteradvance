@@ -1,11 +1,12 @@
 <script setup lang="ts">
-import { computed } from 'vue'
+import { computed, ref } from 'vue'
 import { formatKwh } from '../domain/format'
 
 export interface TrendPoint {
   key: string
   label: string
   kwh: number
+  ms: number
 }
 
 const props = withDefaults(
@@ -21,11 +22,16 @@ const W = 320
 const H = 112
 const PAD = 8
 
+const active = ref<number | null>(null)
+
 const maxValue = computed(() => Math.max(0.1, ...props.points.map((point) => point.kwh)))
+const firstMs = computed(() => props.points[0]?.ms ?? 0)
+const spanMs = computed(() => (props.points[props.points.length - 1]?.ms ?? 0) - firstMs.value)
 
 function x(index: number): number {
   if (props.points.length < 2) return W / 2
-  return PAD + (index / (props.points.length - 1)) * (W - PAD * 2)
+  if (spanMs.value <= 0) return PAD + (index / (props.points.length - 1)) * (W - PAD * 2)
+  return PAD + ((props.points[index].ms - firstMs.value) / spanMs.value) * (W - PAD * 2)
 }
 
 function y(value: number): number {
@@ -37,11 +43,28 @@ const line = computed(() =>
 )
 
 const last = computed(() => props.points[props.points.length - 1])
+
+const activePoint = computed(() =>
+  active.value == null ? null : (props.points[active.value] ?? null),
+)
+
+const tipStyle = computed(() => {
+  if (active.value == null) return {}
+  const xPct = Math.min(86, Math.max(14, (x(active.value) / W) * 100))
+  return {
+    left: `${xPct}%`,
+    top: `${(y(props.points[active.value].kwh) / H) * 100}%`,
+  }
+})
+
+function toggle(index: number) {
+  active.value = active.value === index ? null : index
+}
 </script>
 
 <template>
   <div class="trend-chart">
-    <div class="trend-plot">
+    <div class="trend-plot" @mouseleave="active = null">
       <svg
         :viewBox="`0 0 ${W} ${H}`"
         preserveAspectRatio="none"
@@ -56,11 +79,18 @@ const last = computed(() => props.points[props.points.length - 1])
         v-for="(point, index) in points"
         :key="point.key"
         class="trend-dot"
-        :class="{ 'trend-dot--last': index === points.length - 1 }"
+        :class="{ 'trend-dot--last': index === points.length - 1, 'trend-dot--active': index === active }"
         :style="{ left: `${(x(index) / W) * 100}%`, top: `${(y(point.kwh) / H) * 100}%` }"
         :title="`${point.label}: ${formatKwh(point.kwh)} ${unit}`"
         aria-hidden="true"
+        @mouseenter="active = index"
+        @click="toggle(index)"
       />
+
+      <div v-if="activePoint" class="trend-tip" :style="tipStyle" aria-hidden="true">
+        <span>{{ activePoint.label }}</span>
+        <strong>{{ formatKwh(activePoint.kwh) }} {{ unit }}</strong>
+      </div>
     </div>
 
     <div class="trend-foot">

@@ -33,7 +33,7 @@ const trend = computed(() =>
     .flatMap((view) =>
       view.rate == null
         ? []
-        : [{ key: view.id, label: formatDate(view.timestamp), kwh: view.rate }],
+        : [{ key: view.id, label: formatDate(view.timestamp), kwh: view.rate, ms: new Date(view.timestamp).getTime() }],
     )
     .slice(0, 14)
     .reverse(),
@@ -41,7 +41,12 @@ const trend = computed(() =>
 const balanceTrend = computed(() =>
   store.views
     .slice(0, 14)
-    .map((view) => ({ key: view.id, label: formatDate(view.timestamp), kwh: view.reading }))
+    .map((view) => ({
+      key: view.id,
+      label: formatDate(view.timestamp),
+      kwh: view.reading,
+      ms: new Date(view.timestamp).getTime(),
+    }))
     .reverse(),
 )
 const tariff = computed(() => store.summary.tariffComparison)
