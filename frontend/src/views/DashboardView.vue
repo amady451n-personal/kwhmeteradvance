@@ -6,6 +6,7 @@ import AddReadingDialog from '../components/AddReadingDialog.vue'
 import ReadingRow from '../components/ReadingRow.vue'
 import RunwayRail from '../components/RunwayRail.vue'
 import UsageBars from '../components/UsageBars.vue'
+import UsageTrend from '../components/UsageTrend.vue'
 import {
   formatDays,
   formatDateTime,
@@ -27,6 +28,16 @@ const latestRelative = computed(() =>
   latest.value ? formatRelative(latest.value.timestamp, store.nowMs) : '',
 )
 const price = computed(() => store.summary.effectivePrice)
+const trend = computed(() =>
+  store.views
+    .flatMap((view) =>
+      view.rate == null
+        ? []
+        : [{ key: view.id, label: formatDate(view.timestamp), kwh: view.rate }],
+    )
+    .slice(0, 14)
+    .reverse(),
+)
 const tariff = computed(() => store.summary.tariffComparison)
 </script>
 
@@ -225,6 +236,20 @@ const tariff = computed(() => store.summary.tariffComparison)
         </dl>
       </section>
     </div>
+
+    <section v-if="trend.length > 1" class="surface-card trend-card">
+      <div class="card-head">
+        <div>
+          <h2>Tren pemakaian</h2>
+          <p>Laju kWh/hari tiap catatan.</p>
+        </div>
+        <v-btn variant="text" to="/riwayat" append-icon="mdi-arrow-right">
+          Riwayat
+        </v-btn>
+      </div>
+
+      <UsageTrend :points="trend" />
+    </section>
 
     <section class="surface-card recent-card">
       <div class="card-head">

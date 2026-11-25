@@ -381,3 +381,69 @@
   padding: 20px 24px;
 }
 
+.trend-card {
+  margin-top: 16px;
+  padding: 20px 24px;
+}
+
+.trend-chart {
+  position: relative;
+  margin-top: 20px;
+}
+
+.trend-plot {
+  position: relative;
+  height: 112px;
+}
+
+.trend-chart svg {
+  display: block;
+  width: 100%;
+  height: 112px;
+  overflow: visible;
+}
+
+.trend-base {
+  stroke: rgba(var(--v-theme-outline), 0.3);
+  stroke-width: 1;
+}
+
+.trend-line {
+  fill: none;
+  stroke: rgb(var(--v-theme-primary));
+  stroke-width: 2;
+  stroke-linejoin: round;
+  stroke-linecap: round;
+}
+
+.trend-dot {
+  position: absolute;
+  width: 8px;
+  height: 8px;
+  border: 2px solid rgb(var(--v-theme-primary));
+  border-radius: 50%;
+  background: rgb(var(--v-theme-surface));
+  transform: translate(-50%, -50%);
+}
+
+.trend-dot--last {
+  border-color: rgb(var(--v-theme-accent));
+  background: rgb(var(--v-theme-accent));
+}
+
+.trend-foot {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+  margin-top: 10px;
+  color: rgb(var(--v-theme-on-surface-variant));
+  font-size: 11px;
+}
+
+.trend-foot strong {
+  color: rgb(var(--v-theme-on-surface));
+  font-size: 14px;
+  font-weight: 700;
+}
+
