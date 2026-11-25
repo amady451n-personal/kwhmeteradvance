@@ -1,0 +1,37 @@
+# 0003: Rencana deploy (STB arm64)
+
+- Tanggal: 2026-11-25 18:31 WIB
+- Status: Accepted (2026-11-25 18:31 WIB) — dikunci sebelum implementasi backend
+- Menggantikan: tidak ada
+- Rencana implementasi: `docs/superpowers/plans/2026-11-25-meteranadvanced-backend-deploy.md`
+
+## Fakta target
+
+- Perangkat: STB yang kini murni Armbian Linux, `arm64`.
+- Build di WSL `amd64`; produksi `arm64`. Pola lama: build silang → kirim ke server → deploy.
+- Aplikasi baru berjalan **berdampingan** dengan `kwhmeter basic` (compose project dan port terpisah).
+- TLS/reverse proxy bukan tanggung jawab skrip; skrip hanya mengekspos port. Container proxy sudah ada.
+
+## Keputusan
+
+1. **Satu artefak**: image Docker `meteranadvanced:latest`, dibangun di sini untuk `linux/arm64` lewat `docker buildx build --platform linux/arm64 --load`. Binary Go `CGO_ENABLED=0`, SQLite pure-Go, SPA di-embed (`embed.FS`). Tidak ada build/pull di STB.
+2. **Kirim sebagai image**: `docker save meteranadvanced:latest | gzip > dist/meteranadvanced-image.tar.gz`, lalu `scp`. Di STB: `docker load` sebelum menyentuh compose lama, supaya downtime hanya stop+start container.
+3. **Compose**: `image: meteranadvanced:latest`, `pull_policy: never`, port `${METERAN_PORT}:8080`, volume `meteranadvanced-data:/data`, `restart: unless-stopped`, healthcheck `curl -sf localhost:8080/api/health`.
+4. **Port dari `.env` yang di-track** (`METERAN_PORT`), agar port bisa diganti lewat repo tanpa file untracked.
+5. **Deploy**: `docker load` → `docker compose up -d` → `docker image prune -f` → `rm -f /tmp/meteranadvanced-image.tar.gz`. Container lama `meteranadvanced` dihentikan oleh compose hanya saat image baru sudah ada di host.
+6. **Satu skrip interaktif**, tanpa argumen posisional: `scripts/release.sh`, konfigurasi `scripts/release.env`. Menu: build & package, git push (sini), scp ke STB, git pull (STB), deploy (STB), reset & import, status/health, keluar.
+7. **Reset & import**: `docker compose down -v` untuk `meteranadvanced`, lalu tanya path `meters.db` aplikasi basic, impor 1:1 (tabel `readings`; legacy tidak punya tabel token), menghasilkan data produksi. Hanya boleh jalan saat DB kosong (FR-100). Pemulihan manual di server (FR-106).
+8. **Cadangan**: `scripts/backup.sh` (`.backup` SQLite, simpan N terakhir) untuk cron.
+9. **Tes sampel** (mode preview + browser) dianggap cukup sebagai gerbang frontend; backend diverifikasi lewat tes kontrak OpenAPI.
+
+## Alasan
+
+- Build di `amd64` lalu `docker load` di `arm64` menghilangkan waktu build/pull dari jendela downtime.
+- `.env` di-track mencegah drift port antara repo dan server.
+- Berdampingan dengan aplikasi lama memungkinkan masa paralel tanpa memutus layanan lama.
+
+## Konsekuensi
+
+- Image harus dibangun ulang tiap rilis (`buildx`), tidak ada registry.
+- `docker compose down -v` menghapus data `meteranadvanced`; skrip wajib konfirmasi.
+- TLS/proxy, akses jaringan, dan Web Push HTTPS tetap di luar repo ini.
