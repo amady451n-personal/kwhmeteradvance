@@ -11,3 +11,6 @@ dist/
 # Root compose env is tracked so METERAN_PORT is reproducible on the server.
 !/.env
 scripts/release.env
+
+# Meteran data folder when compose uses the default bind mount
+/data/

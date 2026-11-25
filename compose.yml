@@ -3,10 +3,12 @@ services:
     image: meteranadvanced:latest
     pull_policy: never
     restart: unless-stopped
+    # Run as the host owner so the bind-mounted data folder stays writable.
+    user: "${METERAN_UID:-1000}:${METERAN_GID:-1000}"
     ports:
       - "${METERAN_PORT}:8080"
     volumes:
-      - meteranadvanced-data:/data
+      - "${METERAN_DATA_DIR:-./data}:/data"
     environment:
       METERAN_SECRET: ${METERAN_SECRET:-}
       METERAN_COOKIE_SECURE: ${METERAN_COOKIE_SECURE:-0}
@@ -15,7 +17,3 @@ services:
       interval: 30s
       timeout: 3s
       start_period: 5s
-
-volumes:
-  meteranadvanced-data:
-    name: meteranadvanced-data

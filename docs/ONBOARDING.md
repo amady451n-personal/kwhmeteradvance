@@ -70,7 +70,7 @@ Kontrak adalah sumber kebenaran tipe. Mode default `preview`: klien palsu menjaw
 | `infra/images.pulled.txt` | Image pull khusus proyek ini |
 | `compose.dev.yml` | Dev server Node di container, port 5173; mount `docs/api` read-only |
 | `backend/` | API Go: `cmd/meteran` (serve/import/backup), `internal/{store,httpapi,domain,auth,report,importer,web}` |
-| `compose.yml` | Produksi di STB: image `meteranadvanced:latest`, port dari `.env` (tracked), volume `meteranadvanced-data` |
+| `compose.yml` | Produksi di STB: image `meteranadvanced:latest`, port + folder data dari `.env` (tracked), bind mount `${METERAN_DATA_DIR:-./data}:/data` |
 | `backend/Dockerfile` | Multi-stage: SPA (node, build-platform) → cross-compile arm64 → alpine runtime nonroot |
 | `scripts/release.sh` | Menu interaktif build/push/scp/pull/deploy/reset-impor/status |
 | `scripts/backup.sh` | Snapshot `VACUUM INTO` di STB, simpan N terakhir |
@@ -193,7 +193,13 @@ bash scripts/release.sh      # menu: build → push → scp → pull → deploy
 bash scripts/backup.sh       # snapshot DB di STB
 ```
 
-Deploy memuat image baru dulu (`docker load`) baru `docker compose up -d`, jadi container lama tetap melayani sampai image siap. Menu 6 menghapus volume `meteranadvanced-data` lalu mengimpor `meters.db` aplikasi basic (hanya boleh saat DB kosong). Container `kwhmeter basic` tidak pernah disentuh skrip ini.
+Deploy memuat image baru dulu (`docker load`) baru `docker compose up -d`, jadi container lama tetap melayani sampai image siap. Menu 6 mengosongkan folder data host (`METERAN_DATA_DIR`) lalu mengimpor `meters.db` aplikasi basic (hanya boleh saat DB kosong). Container `kwhmeter basic` tidak pernah disentuh skrip ini.
+
+Data ada di folder host (`METERAN_DATA_DIR`, default `./data` di samping `compose.yml`), bukan named volume. Kalau sebuah STB masih punya volume lama `meteranadvanced-data`, salin isinya sekali sebelum deploy:
+
+```bash
+docker run --rm -v meteranadvanced-data:/from -v "$PWD/data:/to" alpine sh -c 'cp -a /from/. /to/'
+```
 
 Catatan verifikasi: antrean offline (`localStorage('meteran.queue.v1')`) belum diuji terhadap backend nyata di STB; uji manual (putus jaringan → tambah catatan → pulihkan) saat pertama kali server mode dipakai.
 
@@ -201,7 +207,7 @@ Catatan verifikasi: antrean offline (`localStorage('meteran.queue.v1')`) belum d
 
 - Server target arm64, RAM ketat (~512 MB bebas), aplikasi basic masih berjalan paralel.
 - Build hanya di mesin amd64 (WSL), server hanya menjalankan image.
-- Runtime akhir: alpine arm64 nonroot, SPA dilayani Go dari `//go:embed`, SQLite di named volume `meteranadvanced-data`.
+- Runtime akhir: alpine arm64 nonroot, SPA dilayani Go dari `//go:embed`, SQLite di folder host (`METERAN_DATA_DIR`, default `./data`) lewat bind mount, container jalan sebagai `${METERAN_UID}:${METERAN_GID}` agar file tetap milik user host.
 - API harus stabil agar backend Go bisa ditukar ke Rust bila target RAM menuntut.
 - PWA, Web Push, dan HTTPS wajib untuk fitur notifikasi dan instalasi.
 

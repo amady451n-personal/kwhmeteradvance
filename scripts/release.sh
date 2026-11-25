@@ -37,8 +37,16 @@ remote() {
   run ssh "$STB_USER@$STB_HOST" "cd '$STB_DIR' && $cmd"
 }
 
+# Shell snippet run on the STB: resolve METERAN_DATA_DIR from .env into $d and
+# make sure the host folder exists (docker would otherwise create it as root).
+DATA_CMD='set -a; . ./.env; set +a; d="${METERAN_DATA_DIR:-./data}"; mkdir -p "$d"; d=$(cd "$d" && pwd)'
+
 ask_yes() {
   local prompt="$1" answer
+  if [ "${DRY_RUN:-0}" = "1" ]; then
+    note "[dry-run] dianggap '$prompt' = ya"
+    return 0
+  fi
   [ -t 0 ] || die "stdin bukan terminal"
   read -r -p "$prompt [y/N] " answer
   case "$answer" in
@@ -95,50 +103,55 @@ scp_image() {
 
 pull_git() {
   say "git pull di STB"
-  run git pull --ff-only
+  remote "git pull --ff-only"
 }
 
 deploy() {
-  [ -f "$REMOTE_TARBALL" ] || warn "tarball lokal tidak ada; pastikan image sudah di-scp ke STB"
+  [ -f "$TARBALL" ] || warn "tarball lokal tidak ada; pastikan image sudah di-scp ke STB"
   say "deploy $IMAGE di STB (container lama tetap jalan sampai image baru siap)"
   if ! ask_yes "Lanjut deploy?"; then
     printf 'Dibatalkan.\n'
     return 0
   fi
+  step "1/5 siapkan folder data di host"
+  remote "$DATA_CMD"
   # load first: the running container keeps the old image until up -d recreates it
-  step "1/4 load image di STB (container lama masih jalan)"
-  run docker load -i "$REMOTE_TARBALL"
-  step "2/4 jalankan container baru"
-  run docker compose up -d meteranadvanced
-  step "3/4 bersihkan image dangling"
-  run docker image prune -f
-  step "4/4 hapus tarball di /tmp"
-  run rm -f "$REMOTE_TARBALL"
+  step "2/5 load image di STB (container lama masih jalan)"
+  remote "docker load -i '$REMOTE_TARBALL'"
+  step "3/5 jalankan container baru"
+  remote "docker compose up -d meteranadvanced"
+  step "4/5 bersihkan image dangling"
+  remote "docker image prune -f"
+  step "5/5 hapus tarball di /tmp"
+  remote "rm -f '$REMOTE_TARBALL'"
   status
 }
 
 reset_import() {
-  say "reset volume meteranadvanced-data lalu impor meters.db milik kwhmeter basic"
+  say "kosongkan folder data host lalu impor meters.db milik kwhmeter basic"
   warn "semua data meteranadvanced (readings/tokens/settings/PIN) akan hilang."
-  ask_yes "Hapus volume dan impor ulang?" || {
+  warn "folder data diambil dari METERAN_DATA_DIR di .env milik STB."
+  ask_yes "Hapus isi folder data dan impor ulang?" || {
     printf 'Dibatalkan.\n'
     return 0
   }
-  step "1/5 hapus container + volume"
-  remote "docker compose down -v"
+  step "1/6 hentikan container"
+  remote "docker compose down"
 
   local src
   read -r -p "Path meters.db di STB (milik kwhmeter basic): " src
   [ -n "$src" ] || die "path kosong"
-  step "2/5 salin database legacy ke /tmp"
+  step "2/6 kosongkan folder data"
+  remote "$DATA_CMD; find \"\$d\" -mindepth 1 -delete"
+  step "3/6 salin database legacy ke /tmp"
   # copy first: the container user cannot rely on the host file's permissions
   remote "cp '$src' /tmp/legacy-meters.db" || die "gagal menyalin $src"
-  step "3/5 impor (hanya jalan bila DB kosong)"
-  # import runs against the fresh named volume; log output stays visible
-  remote "docker run --rm -v /tmp/legacy-meters.db:/import/meters.db:ro -v meteranadvanced-data:/data '$IMAGE' import --from /import/meters.db"
-  step "4/5 bersihkan berkas sementara"
+  step "4/6 impor (importer menolak bila DB tidak kosong)"
+  # import writes into the bind-mounted folder as the host uid
+  remote "$DATA_CMD; docker run --rm --user \"\$(id -u):\$(id -g)\" -v /tmp/legacy-meters.db:/import/meters.db:ro -v \"\$d:/data\" '$IMAGE' import --from /import/meters.db"
+  step "5/6 bersihkan berkas sementara"
   remote "rm -f /tmp/legacy-meters.db"
-  step "5/5 nyalakan container"
+  step "6/6 nyalakan container"
   remote "docker compose up -d meteranadvanced"
   status
 }
