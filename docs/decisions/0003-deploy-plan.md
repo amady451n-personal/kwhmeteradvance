@@ -50,3 +50,11 @@ di-track memuat default; `release.sh` menyalinnya menjadi `.env` di STB bila
 belum ada. Alasan: `.env` yang tracked membuat setiap perubahan port/uid di
 server tampil sebagai perubahan belum di-stage dan bisa menggagalkan
 `git pull --ff-only`.
+
+## Revisi 2026-11-25 22:24 WIB
+
+Poin `user:` di compose dihapus. Container mulai sebagai root, entrypoint
+meng-`chown -R` `/data` ke `${METERAN_UID}:${METERAN_GID}`, lalu `exec su-exec`
+sehingga proses aplikasi tetap nonroot. Alasan: folder bind mount yang dibuat
+Docker (atau sebelum `mkdir` skrip) milik root, dan `user: 1000:1000` membuat
+SQLite gagal dengan `unable to open database file (14)`.

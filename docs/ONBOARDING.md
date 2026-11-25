@@ -211,7 +211,7 @@ Catatan verifikasi: antrean offline (`localStorage('meteran.queue.v1')`) belum d
 
 - Server target arm64, RAM ketat (~512 MB bebas), aplikasi basic masih berjalan paralel.
 - Build hanya di mesin amd64 (WSL), server hanya menjalankan image.
-- Runtime akhir: alpine arm64 nonroot, SPA dilayani Go dari `//go:embed`, SQLite di folder host (`METERAN_DATA_DIR`, default `./data`) lewat bind mount, container jalan sebagai `${METERAN_UID}:${METERAN_GID}` agar file tetap milik user host.
+- Runtime akhir: alpine arm64 nonroot, SPA dilayani Go dari `//go:embed`, SQLite di folder host (`METERAN_DATA_DIR`, default `./data`) lewat bind mount, container mulai sebagai root hanya untuk `chown -R` `/data` lalu turun ke `${METERAN_UID}:${METERAN_GID}` lewat `su-exec` (`backend/docker-entrypoint.sh`), jadi file milik user host walau folder sebelumnya dibuat root oleh Docker.
 - API harus stabil agar backend Go bisa ditukar ke Rust bila target RAM menuntut.
 - PWA, Web Push, dan HTTPS wajib untuk fitur notifikasi dan instalasi.
 

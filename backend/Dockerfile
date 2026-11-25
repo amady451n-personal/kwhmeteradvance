@@ -24,15 +24,16 @@ RUN CGO_ENABLED=0 GOOS=linux GOARCH=arm64 go build \
 
 # Stage 3: runtime.
 FROM alpine:3.22
-RUN apk add --no-cache ca-certificates tzdata curl \
+RUN apk add --no-cache ca-certificates tzdata curl su-exec \
  && adduser -D -u 10001 meteran \
  && mkdir -p /data \
  && chown meteran:meteran /data
 COPY --from=build /meteran /meteran
-USER meteran
+COPY backend/docker-entrypoint.sh /entrypoint.sh
+RUN chmod +x /entrypoint.sh
 ENV METERAN_DB=/data/meteran.db \
     TZ=Asia/Jakarta
 EXPOSE 8080
 HEALTHCHECK --interval=30s --timeout=3s --start-period=5s \
   CMD curl -sf http://localhost:8080/api/health >/dev/null || exit 1
-ENTRYPOINT ["/meteran"]
+ENTRYPOINT ["/entrypoint.sh"]

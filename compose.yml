@@ -3,8 +3,8 @@ services:
     image: meteranadvanced:latest
     pull_policy: never
     restart: unless-stopped
-    # Run as the host owner so the bind-mounted data folder stays writable.
-    user: "${METERAN_UID:-1000}:${METERAN_GID:-1000}"
+    # Starts as root only to chown /data, then drops to these ids (see
+    # backend/docker-entrypoint.sh) so bind-mounted files stay owned by the host user.
     ports:
       - "${METERAN_PORT}:8080"
     volumes:
@@ -12,6 +12,8 @@ services:
     environment:
       METERAN_SECRET: ${METERAN_SECRET:-}
       METERAN_COOKIE_SECURE: ${METERAN_COOKIE_SECURE:-0}
+      METERAN_UID: ${METERAN_UID:-1000}
+      METERAN_GID: ${METERAN_GID:-1000}
     healthcheck:
       test: ["CMD", "curl", "-sf", "http://localhost:8080/api/health"]
       interval: 30s
