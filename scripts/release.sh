@@ -16,13 +16,17 @@ cd "$ROOT"
 TARBALL="dist/meteranadvanced-image.tar.gz"
 REMOTE_TARBALL="/tmp/meteranadvanced-image.tar.gz"
 
-say() { printf '\n== %s\n' "$*"; }
-warn() { printf '!! %s\n' "$*" >&2; }
-die() { printf 'error: %s\n' "$*" >&2; exit 1; }
+stamp() { date +%H:%M:%S; }
+say() { printf '\n[%s] == %s\n' "$(stamp)" "$*"; }
+step() { printf '[%s] -- %s\n' "$(stamp)" "$*"; }
+note() { printf '[%s]    %s\n' "$(stamp)" "$*"; }
+warn() { printf '[%s] !! %s\n' "$(stamp)" "$*" >&2; }
+die() { printf '[%s] error: %s\n' "$(stamp)" "$*" >&2; exit 1; }
+trap 'warn "gagal di baris $LINENO (exit $?)"' ERR
 
 run() {
+  note "\$ $*"
   if [ "${DRY_RUN:-0}" = "1" ]; then
-    printf '   $ %s\n' "$*"
     return 0
   fi
   "$@"
@@ -57,14 +61,21 @@ load_config() {
 }
 
 build_image() {
+  local start=$SECONDS
   say "build arm64 image $IMAGE"
+  note "tahap 1/2: npm build + go build (biasanya 1-3 menit, output di bawah)"
   run docker buildx build --platform linux/arm64 -t "$IMAGE" --load -f backend/Dockerfile .
+  note "build selesai dalam $((SECONDS - start))s"
+
   say "package image -> $TARBALL"
+  note "tahap 2/2: docker save | gzip (biasanya 1-2 menit, tanpa output)"
   mkdir -p dist
   if [ "${DRY_RUN:-0}" = "1" ]; then
-    printf '   $ docker save %s | gzip > %s\n' "$IMAGE" "$TARBALL"
+    note "\$ docker save $IMAGE | gzip > $TARBALL"
   else
+    start=$SECONDS
     docker save "$IMAGE" | gzip > "$TARBALL"
+    note "paket selesai dalam $((SECONDS - start))s"
     ls -lh "$TARBALL"
   fi
 }
@@ -77,7 +88,9 @@ push_git() {
 scp_image() {
   [ -f "$TARBALL" ] || die "tarball belum ada: $TARBALL (jalankan menu 1)"
   say "scp image -> $STB_HOST:$REMOTE_TARBALL"
+  note "transfer $(du -h "$TARBALL" | cut -f1), progress bar muncul di bawah"
   run scp "$TARBALL" "$STB_USER@$STB_HOST:$REMOTE_TARBALL"
+  note "transfer selesai"
 }
 
 pull_git() {
@@ -93,9 +106,13 @@ deploy() {
     return 0
   fi
   # load first: the running container keeps the old image until up -d recreates it
+  step "1/4 load image di STB (container lama masih jalan)"
   remote "docker load -i '$REMOTE_TARBALL'"
+  step "2/4 jalankan container baru"
   remote "docker compose up -d meteranadvanced"
+  step "3/4 bersihkan image dangling"
   remote "docker image prune -f"
+  step "4/4 hapus tarball di /tmp"
   remote "rm -f '$REMOTE_TARBALL'"
   status
 }
@@ -107,16 +124,21 @@ reset_import() {
     printf 'Dibatalkan.\n'
     return 0
   }
+  step "1/5 hapus container + volume"
   remote "docker compose down -v"
 
   local src
   read -r -p "Path meters.db di STB (milik kwhmeter basic): " src
   [ -n "$src" ] || die "path kosong"
+  step "2/5 salin database legacy ke /tmp"
   # copy first: the container user cannot rely on the host file's permissions
   remote "cp '$src' /tmp/legacy-meters.db" || die "gagal menyalin $src"
+  step "3/5 impor (hanya jalan bila DB kosong)"
   # import runs against the fresh named volume; log output stays visible
   remote "docker run --rm -v /tmp/legacy-meters.db:/import/meters.db:ro -v meteranadvanced-data:/data '$IMAGE' import --from /import/meters.db"
+  step "4/5 bersihkan berkas sementara"
   remote "rm -f /tmp/legacy-meters.db"
+  step "5/5 nyalakan container"
   remote "docker compose up -d meteranadvanced"
   status
 }
@@ -151,6 +173,7 @@ load_config
 menu
 while true; do
   read -r -p 'Pilih: ' choice
+  start=$SECONDS
   case "$choice" in
     1) build_image ;;
     2) push_git ;;
@@ -162,4 +185,5 @@ while true; do
     0 | q | Q) exit 0 ;;
     *) printf 'Pilihan tidak dikenal.\n' ;;
   esac
+  step "menu $choice selesai dalam $((SECONDS - start))s"
 done
