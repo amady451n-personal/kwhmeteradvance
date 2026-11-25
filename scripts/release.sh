@@ -99,7 +99,7 @@ pull_git() {
 }
 
 deploy() {
-  [ -f "$TARBALL" ] || warn "tarball lokal tidak ada; pastikan image sudah di-scp ke STB"
+  [ -f "$REMOTE_TARBALL" ] || warn "tarball lokal tidak ada; pastikan image sudah di-scp ke STB"
   say "deploy $IMAGE di STB (container lama tetap jalan sampai image baru siap)"
   if ! ask_yes "Lanjut deploy?"; then
     printf 'Dibatalkan.\n'
