@@ -113,6 +113,19 @@ export const useAppStore = defineStore('app', () => {
     await init()
   }
 
+  async function lock() {
+    const known = await client.getSession().catch(() => null)
+    session.value = {
+      authenticated: false,
+      pinSet: known?.pinSet ?? session.value?.pinSet ?? true,
+    }
+  }
+
+  async function logout() {
+    await client.logout().catch(() => {})
+    await lock()
+  }
+
   async function setPin(currentPin: string | null, newPin: string) {
     await client.setPin(currentPin, newPin)
     session.value = { authenticated: true, pinSet: true }
@@ -155,14 +168,23 @@ export const useAppStore = defineStore('app', () => {
         )
       }
     } catch (caught) {
-      offline.value = caught instanceof ApiError && caught.isOffline
-      error.value = caught instanceof Error ? caught.message : 'Gagal memuat data.'
+      if (caught instanceof ApiError && caught.status === 401) {
+        await lock()
+      } else {
+        offline.value = caught instanceof ApiError && caught.isOffline
+        error.value = caught instanceof Error ? caught.message : 'Gagal memuat data.'
+      }
     } finally {
       loading.value = false
     }
   }
 
   function fail(caught: unknown): never {
+    if (caught instanceof ApiError && caught.status === 401) {
+      session.value = { authenticated: false, pinSet: session.value?.pinSet ?? true }
+      void lock()
+      throw caught
+    }
     error.value = caught instanceof Error ? caught.message : 'Permintaan gagal.'
     if (caught instanceof ApiError && caught.isOffline) {
       offline.value = true
@@ -383,6 +405,7 @@ export const useAppStore = defineStore('app', () => {
     queuedCount,
     session,
     login,
+    logout,
     setPin,
     error,
     toast,

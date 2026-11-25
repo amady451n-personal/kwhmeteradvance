@@ -362,9 +362,19 @@ function removeDenomination(value: number) {
           <strong>Kunci aplikasi</strong>
           <p>Sesi PIN aktif saat backend terhubung. Mode pratinjau tanpa PIN.</p>
         </div>
-        <v-chip color="secondary" variant="tonal" size="small">
-          {{ store.mode === 'preview' ? 'Pratinjau' : 'Aktif' }}
-        </v-chip>
+        <div class="d-flex align-center ga-2">
+          <v-chip color="secondary" variant="tonal" size="small">
+            {{ store.mode === 'preview' ? 'Pratinjau' : 'Aktif' }}
+          </v-chip>
+          <v-btn
+            v-if="store.mode === 'server'"
+            variant="tonal"
+            size="small"
+            @click="store.logout()"
+          >
+            Keluar
+          </v-btn>
+        </div>
       </div>
 
       <div class="info-row">
