@@ -148,9 +148,9 @@ status() {
   port="$(awk -F= '/^METERAN_PORT=/{gsub(/[ \t]/, "", $2); print $2}' "$ROOT/.env")"
   port="${port:-8080}"
   say "status container"
-  remote "docker compose ps meteranadvanced"
+  run docker compose ps meteranadvanced
   say "health http://localhost:$port/api/health"
-  remote "curl -fsS http://localhost:$port/api/health" || warn "health belum OK"
+  run curl -fsS http://localhost:$port/api/health" || warn "health belum OK
 }
 
 menu() {
