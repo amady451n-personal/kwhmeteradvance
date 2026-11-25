@@ -95,7 +95,7 @@ scp_image() {
 
 pull_git() {
   say "git pull di STB"
-  run "git pull --ff-only"
+  run git pull --ff-only
 }
 
 deploy() {
