@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed } from 'vue'
 import { DAY_MS } from '../domain/energy'
-import { formatDays, formatShortDate, timeOnly } from '../domain/format'
+import { formatDays, formatDate, timeOnly } from '../domain/format'
 
 const props = defineProps<{
   nowMs: number
@@ -28,10 +28,10 @@ const depletionPct = computed(() =>
 const isLate = computed(() => props.depletionMs != null && props.depletionMs < props.targetMs)
 
 const targetLabel = computed(
-  () => `${formatShortDate(props.targetMs)}, ${timeOnly(props.targetMs)}`,
+  () => `${formatDate(props.targetMs)}, ${timeOnly(props.targetMs)}`,
 )
 const bufferLabel = computed(() =>
-  props.depletionMs == null ? 'Belum bisa dihitung' : formatShortDate(props.depletionMs),
+  props.depletionMs == null ? 'Belum bisa dihitung' : formatDate(props.depletionMs),
 )
 const accessibleLabel = computed(() => {
   if (props.daysLeft == null || props.depletionMs == null) {
@@ -70,7 +70,7 @@ const accessibleLabel = computed(() => {
       <div class="runway-item">
         <span class="runway-key runway-key--now" />
         <span class="runway-item-label">Sekarang</span>
-        <strong>{{ formatShortDate(nowMs) }}</strong>
+        <strong>{{ formatDate(nowMs) }}</strong>
       </div>
       <div class="runway-item">
         <span class="runway-key runway-key--target" />

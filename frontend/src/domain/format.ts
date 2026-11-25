@@ -25,11 +25,6 @@ export function formatDate(value: string | number): string {
   return `${partOf(parts, 'day')} ${partOf(parts, 'month')} ${partOf(parts, 'year')}`
 }
 
-export function formatShortDate(value: string | number): string {
-  const parts = dateTimeParts.formatToParts(new Date(value))
-  return `${partOf(parts, 'day')} ${partOf(parts, 'month')}`
-}
-
 export function formatKwh(value: number | null | undefined, digits = 2): string {
   if (value == null || Number.isNaN(value)) return '-'
   return new Intl.NumberFormat('id-ID', {

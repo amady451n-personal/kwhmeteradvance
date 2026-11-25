@@ -4,7 +4,7 @@ import type { ReadingView } from '../domain/types'
 import {
   formatKwh,
   formatRupiah,
-  formatShortDate,
+  formatDate,
   timeOnly,
 } from '../domain/format'
 
@@ -28,12 +28,9 @@ const comparisonColor = computed(() => {
   return 'secondary'
 })
 
-const comparisonTitle = computed(() => {
-  if (!props.view.comparison || props.view.comparisonDiff == null) return ''
-  const diff = formatKwh(props.view.comparisonDiff)
-  if (props.view.comparison === 'hemat') return `Turun ${diff} kWh/hari dari interval sebelumnya`
-  if (props.view.comparison === 'boros') return `Naik ${diff} kWh/hari dari interval sebelumnya`
-  return `Selisih ${diff} kWh/hari dari interval sebelumnya`
+const comparisonDiff = computed(() => {
+  if (props.view.comparisonDiff == null) return ''
+  return `${formatKwh(Math.abs(props.view.comparisonDiff))} kWh/hari`
 })
 </script>
 
@@ -43,7 +40,7 @@ const comparisonTitle = computed(() => {
     :class="{ 'reading-row--compact': compact, 'reading-row--actions': actions }"
   >
     <div class="reading-date">
-      <span class="reading-day">{{ formatShortDate(view.timestamp) }}</span>
+      <span class="reading-day">{{ formatDate(view.timestamp) }}</span>
       <span class="reading-time tabular">{{ timeOnly(view.timestamp) }}</span>
     </div>
 
@@ -66,10 +63,12 @@ const comparisonTitle = computed(() => {
           size="x-small"
           :color="comparisonColor"
           variant="tonal"
-          :title="comparisonTitle"
         >
           {{ comparisonLabel }}
         </v-chip>
+        <span v-if="view.comparison && comparisonDiff" class="reading-diff tabular">
+          {{ comparisonDiff }}
+        </span>
       </div>
     </div>
 
@@ -80,7 +79,7 @@ const comparisonTitle = computed(() => {
       </div>
       <div v-if="view.rate != null" class="reading-metric">
         <span class="metric-label">Laju</span>
-        <span class="metric-value tabular">{{ formatKwh(view.rate) }} /hari</span>
+        <span class="metric-value tabular">{{ formatKwh(view.rate) }} kWh/hari</span>
       </div>
       <div v-if="view.isTopup" class="reading-metric">
         <span class="metric-label">Biaya</span>
@@ -93,7 +92,7 @@ const comparisonTitle = computed(() => {
         icon="mdi-pencil-outline"
         variant="text"
         size="small"
-        :aria-label="`Ubah catatan ${formatShortDate(view.timestamp)}`"
+        :aria-label="`Ubah catatan ${formatDate(view.timestamp)}`"
         @click="emit('edit')"
       />
       <v-btn
@@ -101,7 +100,7 @@ const comparisonTitle = computed(() => {
         variant="text"
         size="small"
         :disabled="view.locked"
-        :aria-label="`Hapus catatan ${formatShortDate(view.timestamp)}`"
+        :aria-label="`Hapus catatan ${formatDate(view.timestamp)}`"
         @click="emit('delete')"
       />
     </div>

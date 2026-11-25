@@ -47,7 +47,7 @@ func DayLabel(key string) string {
 
 func shortDate(ms int64) string {
 	t := time.UnixMilli(ms).In(store.WIB)
-	return t.Format("2") + " " + monthNames[int(t.Month())-1]
+	return t.Format("2") + " " + monthNames[int(t.Month())-1] + " " + t.Format("2006")
 }
 
 func shortMonth(ms int64) string {

@@ -10,7 +10,7 @@ import {
   formatDays,
   formatKwh,
   formatRupiah,
-  formatShortDate,
+  formatDate,
 } from '../domain/format'
 
 const store = useAppStore()
@@ -48,7 +48,8 @@ async function loadBuckets() {
       to: to.value || todayKey,
       group: group.value,
     })
-    buckets.value = page.data
+    // newest period first; the API returns ascending buckets
+    buckets.value = [...page.data].reverse()
   } catch (caught) {
     buckets.value = []
     bucketsError.value = caught instanceof Error ? caught.message : 'Gagal memuat pemakaian.'
@@ -137,7 +138,7 @@ async function downloadPdf() {
         <div>
           <dt>Perkiraan buffer</dt>
           <dd>
-            {{ store.summary.depletionMs ? formatShortDate(store.summary.depletionMs) : 'Belum bisa dihitung' }}
+            {{ store.summary.depletionMs ? formatDate(store.summary.depletionMs) : 'Belum bisa dihitung' }}
           </dd>
         </div>
         <div>

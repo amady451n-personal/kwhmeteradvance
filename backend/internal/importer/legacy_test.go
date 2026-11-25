@@ -126,3 +126,43 @@ func TestScanAcceptsRealAndTextCost(t *testing.T) {
 		t.Fatalf("text cost = %d", got)
 	}
 }
+
+func TestScanKeepsLegacyWallClock(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "meters.db")
+	conn, err := sql.Open("sqlite", path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, err = conn.Exec(`create table readings (
+		id integer primary key, meter_name text, reading real, timestamp text,
+		notes text, recharge_amount real, cost integer)`)
+	if err == nil {
+		// the old app wrote local time no matter which suffix it used
+		_, err = conn.Exec(`insert into readings values
+			(1, 'main', 100, '2026-11-25T18:22:00Z', null, null, null),
+			(2, 'main', 100, '2026-11-25 19:22:00+07:00', null, null, null),
+			(3, 'main', 100, '2026-11-25T20:22:00.000Z', null, null, null)`)
+	}
+	_ = conn.Close()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	preview, err := Scan(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(preview.Valid) != 3 {
+		t.Fatalf("valid = %d, rejected = %+v", len(preview.Valid), preview.Rejected)
+	}
+	want := map[string]string{
+		"1": "2026-11-25T18:22:00+07:00",
+		"2": "2026-11-25T19:22:00+07:00",
+		"3": "2026-11-25T20:22:00+07:00",
+	}
+	for _, row := range preview.Valid {
+		if got := *row.Timestamp; got != want[*row.OldID] {
+			t.Fatalf("wall clock shifted for %s: %s", *row.OldID, got)
+		}
+	}
+}

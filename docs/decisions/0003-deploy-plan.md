@@ -67,3 +67,10 @@ milik root (impor dijalankan sebagai root) sementara app jalan sebagai
 sebagai uid target, dan `exit 1` dengan pesan perbaikan bila gagal (tidak lagi
 menyembunyikan error chown). Impor di `release.sh` juga meneruskan
 `METERAN_UID`/`METERAN_GID` sehingga file hasil impor langsung milik uid app.
+
+## Revisi 2026-11-25 23:30 WIB
+
+Impor legacy mempertahankan wall-clock: digit tanggal/jam dipakai apa adanya
+sebagai WIB, termasuk bila string membawa `Z` atau offset (aplikasi basic
+menulis waktu lokal dengan suffix apa pun). Sebelumnya `Z` dibaca UTC sehingga
+semua hasil impor bergeser +7 jam.

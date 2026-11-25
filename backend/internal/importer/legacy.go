@@ -8,9 +8,27 @@ import (
 	"math"
 	"strconv"
 	"strings"
+	"time"
 
 	"meteran/internal/store"
 )
+
+// legacyTime keeps the wall-clock digits as WIB. The old app wrote local time
+// even when the string carried a Z or an offset, so parsing it as UTC shifted
+// every imported reading by 7 hours.
+func legacyTime(s string) (time.Time, error) {
+	base := strings.TrimSpace(s)
+	if len(base) > 19 {
+		base = base[:19]
+	}
+	base = strings.Replace(base, "T", " ", 1)
+	for _, layout := range []string{"2006-01-02 15:04:05", "2006-01-02 15:04", "2006-01-02"} {
+		if t, err := time.ParseInLocation(layout, base, store.WIB); err == nil {
+			return t, nil
+		}
+	}
+	return store.ParseTime(s)
+}
 
 // numeric accepts the driver values a legacy cost column can produce.
 func numeric(v any) (float64, bool) {
@@ -115,7 +133,7 @@ func Scan(path string) (Preview, error) {
 
 		var parsed string
 		if ts.Valid && ts.String != "" {
-			if t, err := store.ParseTime(ts.String); err == nil {
+			if t, err := legacyTime(ts.String); err == nil {
 				parsed = store.FormatTime(t)
 				row.Timestamp = &parsed
 			}

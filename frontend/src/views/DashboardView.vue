@@ -12,7 +12,7 @@ import {
   formatKwh,
   formatRelative,
   formatRupiah,
-  formatShortDate,
+  formatDate,
 } from '../domain/format'
 
 const store = useAppStore()
@@ -103,7 +103,7 @@ const tariff = computed(() => store.summary.tariffComparison)
           <div class="balance-metric">
             <span>Perkiraan buffer</span>
             <strong class="tabular">
-              {{ summary.depletionMs ? formatShortDate(summary.depletionMs) : 'Belum bisa' }}
+              {{ summary.depletionMs ? formatDate(summary.depletionMs) : 'Belum bisa' }}
             </strong>
           </div>
           <div class="balance-metric">

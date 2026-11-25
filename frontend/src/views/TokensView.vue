@@ -3,7 +3,7 @@ import { computed, ref } from 'vue'
 import { useAppStore } from '../stores/app'
 import AddTokenDialog from '../components/AddTokenDialog.vue'
 import type { TokenRecord } from '../domain/types'
-import { formatDateTime, formatKwh, formatRupiah, formatShortDate } from '../domain/format'
+import { formatDateTime, formatKwh, formatRupiah, formatDate } from '../domain/format'
 import { useFocusReturn } from '../composables/useFocusReturn'
 
 const store = useAppStore()
@@ -35,7 +35,7 @@ const stockCount = computed(
   () => store.tokens.filter((token) => token.status === 'unused').length,
 )
 
-const targetLabel = computed(() => formatShortDate(store.summary.targetMs))
+const targetLabel = computed(() => formatDate(store.summary.targetMs))
 
 const statusLabel: Record<TokenRecord['status'], string> = {
   unused: 'Belum dipakai',
