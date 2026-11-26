@@ -13,7 +13,7 @@ Yang **belum** selesai dan jadi fokus sesi berikutnya:
 1. Deploy ke STB: menu 1 (build) lalu menu 5 (deploy), lalu menu 6 (reset & impor) agar timestamp legacy masuk dengan perbaikan wall-clock.
 2. Uji antrean offline (`localStorage('meteran.queue.v1')`) terhadap backend nyata: putus jaringan → tambah catatan → pulihkan → cek tidak duplikat.
 3. Repo belum punya `git remote`; menu 2 (push) dan menu 4 (pull) baru jalan setelah remote ditambahkan.
-4. `docs/ONBOARDING.md` masih punya kalimat lama di bagian awal (baris 9, 49, 127) yang menyebut backend belum ada / repo bukan git. Sudah tidak sesuai; perbarui saat ada kesempatan.
+4. `docs/ONBOARDING.md` sudah diselaraskan dengan kondisi repo saat handoff dibuat.
 
 ## Dokumen sumber (jangan duplikasi di sini)
 

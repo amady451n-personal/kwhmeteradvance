@@ -6,7 +6,7 @@ Terakhir diverifikasi: 2026-11-24 09:48 WIB.
 
 PWA pencatat sisa kWh meteran PLN prabayar untuk satu rumah. Fokus v1: catat meter cepat, lihat pemakaian harian, prediksi kapan sisa menyentuh buffer, dan rekomendasi satu token sampai tanggal 1 berikutnya.
 
-Kondisi repo saat ini: **frontend pratinjau saja**. Belum ada backend, API, SQLite, PWA/service worker, antrean offline, PIN, impor, atau push. Data berasal dari snapshot `meters.db` aplikasi basic dan disimpan di `localStorage`.
+Kondisi repo saat ini: frontend + backend + API + SQLite + PWA/service worker + antrean offline + PIN + impor + push sudah ada. Mode pratinjau memakai fixture; mode server memakai backend Go.
 
 ## Stack
 
@@ -46,7 +46,7 @@ src/api/client.ts (fetch, envelope, ApiError)   src/api/preview.ts (localStorage
                      views/*.vue  <-  layouts/AppShell.vue (drawer/rail/bottom nav)
 ```
 
-Kontrak adalah sumber kebenaran tipe. Mode default `preview`: klien palsu menjawab bentuk payload yang sama dengan server, menyimpan ke `localStorage('meteran.preview.v2')` dan seed dari `data/fixture.json`. Set `VITE_API_MODE=server` untuk memakai `fetch` ke `/api/*` (backend belum ada).
+Kontrak adalah sumber kebenaran tipe. Mode default `preview`: klien palsu menjawab bentuk payload yang sama dengan server, menyimpan ke `localStorage('meteran.preview.v2')` dan seed dari `data/fixture.json`. Set `VITE_API_MODE=server` untuk memakai `fetch` ke `/api/*` (image produksi memakai mode ini).
 
 ## Peta direktori
 
@@ -139,7 +139,7 @@ Catatan: `memory.md` masih menyebut "scaffold belum dibuat"; bagian itu sudah ti
 - Aksesibilitas: setiap layar punya satu `h1` (Beranda memakai `h1.sr-only`), dialog memakai `aria-labelledby` ke judulnya, dan fokus dikembalikan ke pemicu lewat `composables/useFocusReturn.ts`. Target sentuh minimal 44 px pada layout sentuh (≤959 px).
 - Batas 500 baris per file (NFR-11). `main.css` (1602) dan `domain/energy.ts` (514) masih melebihi; `api/preview.ts` mendekati batas.
 - Tidak ada test runner. `npm test` masih placeholder yang keluar dengan kode 1.
-- Repo bukan git repository, jadi konvensi branch/commit tidak dapat dideteksi.
+- Repo adalah git repository; riwayat dan konvensi commit bisa dilihat lewat `git log`.
 
 ## Perintah
 
