@@ -15,6 +15,7 @@ import (
 	"time"
 
 	"meteran/internal/httpapi"
+	"meteran/internal/push"
 	"meteran/internal/store"
 	"meteran/internal/web"
 )
@@ -49,18 +50,38 @@ func main() {
 	}
 	db.Secret = secret
 
+	pushCtx, stopPush := context.WithCancel(context.Background())
+	defer stopPush()
+
+	// Env keys win; otherwise a pair is generated once and cached in /data.
+	vapid, vapidErr := push.LoadOrCreate(
+		os.Getenv("METERAN_VAPID_PUBLIC"),
+		os.Getenv("METERAN_VAPID_PRIVATE"),
+		env("METERAN_VAPID_FILE", "/data/vapid.json"),
+	)
+	vapidPublic := ""
+	if vapidErr == nil {
+		vapidPublic = vapid.Public
+	}
+
 	srv := &http.Server{
 		Addr: addr,
 		Handler: (&httpapi.Server{
 			DB:           db,
 			Version:      version,
 			Secret:       db.Secret,
-			VAPIDPublic:  os.Getenv("METERAN_VAPID_PUBLIC"),
-			VAPIDPrivate: os.Getenv("METERAN_VAPID_PRIVATE"),
+			VAPIDPublic:  vapidPublic,
 			CookieSecure: os.Getenv("METERAN_COOKIE_SECURE") == "1",
 			Web:          web.Handler(),
 		}).Handler(),
 		ReadHeaderTimeout: 10 * time.Second,
+	}
+
+	if vapidErr != nil {
+		log.Printf("push: notifikasi nonaktif: %v", vapidErr)
+	} else {
+		go (&push.Client{VAPID: vapid, TTL: 3600}).RunDaily(pushCtx, db, time.Minute)
+		log.Printf("push: pengingat harian aktif")
 	}
 
 	go func() {

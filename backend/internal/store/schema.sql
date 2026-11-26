@@ -74,3 +74,9 @@ CREATE TABLE IF NOT EXISTS push_subscriptions (
     auth       TEXT NOT NULL,
     created_at TEXT NOT NULL
 );
+
+-- One row per WIB day already reminded, so restarts do not resend.
+CREATE TABLE IF NOT EXISTS push_log (
+    day     TEXT PRIMARY KEY,
+    sent_at TEXT NOT NULL
+);

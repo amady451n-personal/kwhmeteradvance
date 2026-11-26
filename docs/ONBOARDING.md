@@ -118,7 +118,7 @@ Waktu: semua perhitungan memakai offset WIB tetap (`+07:00`), bukan zona perangk
 | FR-30 s/d FR-33 harga efektif dan pembanding tarif | `effectivePrice`, `tariffComparison`, field tarif di Pengaturan |
 | FR-40 s/d FR-47 prediksi dan rekomendasi | `dataQuality`, status rekomendasi (`ok`, `largest_only`, `no_denomination_available`, `price_unknown`), `alerts` |
 | FR-50 s/d FR-51 dashboard | Grafik 7 hari, minggu berjalan, banner urgensi/alerts |
-| FR-60/61 push | Kontrak + tipe ada; UI aktivasi menunggu backend |
+| FR-60/61 push | Aktivasi di Pengaturan, endpoint VAPID di server, pengingat harian sekali per hari WIB (`internal/push`) |
 | FR-70/71 PDF server | Tombol + unduhan blob di Laporan (mode server) |
 | FR-80/81 pengaturan | Buffer, jendela, jam target, denominasi, tarif; impor berkas ada |
 | FR-90/91 PIN dan rate limit | Layar kunci PIN (setup/masuk) untuk mode server; rate limit di server |
@@ -214,6 +214,21 @@ docker run --rm -v meteranadvanced-data:/from -v "$PWD/data:/to" alpine sh -c 'c
 ```
 
 Catatan verifikasi: antrean offline (`localStorage('meteran.queue.v1')`) belum diuji terhadap backend nyata di STB; uji manual (putus jaringan → tambah catatan → pulihkan) saat pertama kali server mode dipakai.
+
+### Notifikasi push
+
+Tidak perlu konfigurasi: backend membuat pasangan kunci VAPID sendiri saat start pertama, lalu menyimpannya di `<METERAN_DATA_DIR>/vapid.json` (0600) agar langganan browser tidak rusak setelah restart. `/api/push/public-key` mengembalikan kunci itu, jadi tombol notifikasi di Pengaturan langsung bekerja.
+
+Kalau mau memakai kunci sendiri, isi `.env`:
+
+```bash
+npx web-push generate-vapid-keys
+# METERAN_VAPID_PUBLIC=...  METERAN_VAPID_PRIVATE=...
+```
+
+Kunci env selalu menang atas file cache. Backend memvalidasi pasangan kunci saat start; kalau tidak cocok atau salah format, log berisi `push: notifikasi nonaktif: ...` dan tombol notifikasi menolak dengan pesan jelas alih-alih error browser `applicationServerKey is not valid`.
+
+Pengingat dikirim sekali per hari WIB setelah `reminderHour`, hanya bila catatan meter terakhir lebih dari 24 jam; endpoint yang membalas 404/410 otomatis dihapus dan `push_enabled` ikut turun saat langganan terakhir hilang. Web Push butuh HTTPS (atau `localhost`).
 
 ## Batasan yang membentuk keputusan
 

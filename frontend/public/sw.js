@@ -15,6 +15,35 @@ self.addEventListener('activate', (event) => {
   )
 })
 
+self.addEventListener('push', (event) => {
+  let payload = {}
+  try {
+    payload = event.data ? event.data.json() : {}
+  } catch {
+    payload = {}
+  }
+  event.waitUntil(
+    self.registration.showNotification(payload.title || 'meteran kWh', {
+      body: payload.body || 'Waktunya catat meter.',
+      icon: '/icon.svg',
+      badge: '/icon.svg',
+      lang: 'id',
+      data: { url: payload.url || '/' },
+    }),
+  )
+})
+
+self.addEventListener('notificationclick', (event) => {
+  event.notification.close()
+  const url = (event.notification.data && event.notification.data.url) || '/'
+  event.waitUntil(
+    self.clients.matchAll({ type: 'window', includeUncontrolled: true }).then((list) => {
+      for (const client of list) if ('focus' in client) return client.focus()
+      return self.clients.openWindow(url)
+    }),
+  )
+})
+
 self.addEventListener('fetch', (event) => {
   const { request } = event
   if (request.method !== 'GET') return

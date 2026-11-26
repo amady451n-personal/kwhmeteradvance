@@ -53,3 +53,37 @@ func (db *DB) CountSubscriptions() (int, error) {
 	err := db.SQL.QueryRow(`select count(*) from push_subscriptions`).Scan(&n)
 	return n, err
 }
+
+// ListSubscriptions returns every stored endpoint, oldest first.
+func (db *DB) ListSubscriptions() ([]PushSubscription, error) {
+	rows, err := db.SQL.Query(`select id, endpoint, p256dh, auth, created_at from push_subscriptions order by created_at`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var list []PushSubscription
+	for rows.Next() {
+		var s PushSubscription
+		if err := rows.Scan(&s.ID, &s.Endpoint, &s.Keys.P256dh, &s.Keys.Auth, &s.CreatedAt); err != nil {
+			return nil, err
+		}
+		list = append(list, s)
+	}
+	return list, rows.Err()
+}
+
+// LastPushDay is the WIB date of the last reminder push, empty when none.
+func (db *DB) LastPushDay() (string, error) {
+	var day string
+	err := db.SQL.QueryRow(`select day from push_log order by day desc limit 1`).Scan(&day)
+	if isNoRows(err) {
+		return "", nil
+	}
+	return day, err
+}
+
+// MarkPushDay records that a reminder was sent for a WIB date.
+func (db *DB) MarkPushDay(day string) error {
+	_, err := db.SQL.Exec(`insert or replace into push_log (day, sent_at) values (?, ?)`, day, Now())
+	return err
+}

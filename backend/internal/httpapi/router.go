@@ -13,7 +13,6 @@ type Server struct {
 	Version      string
 	Secret       []byte // AES key for token codes, derived from METERAN_SECRET
 	VAPIDPublic  string
-	VAPIDPrivate string
 	CookieSecure bool
 	Web          http.Handler // SPA, nil while only the API is wired
 

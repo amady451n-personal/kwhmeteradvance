@@ -18,9 +18,22 @@ const pushDone = ref(false)
 const pushBusy = ref(false)
 
 function base64ToBytes(value: string): Uint8Array {
-  const padding = '='.repeat((4 - (value.length % 4)) % 4)
-  const raw = atob((value + padding).replace(/-/g, '+').replace(/_/g, '/'))
-  return Uint8Array.from(raw, (char) => char.charCodeAt(0))
+  const trimmed = value.trim()
+  if (!trimmed) {
+    throw new Error('Kunci push belum diatur di server (METERAN_VAPID_PUBLIC).')
+  }
+  let raw: string
+  try {
+    const padding = '='.repeat((4 - (trimmed.length % 4)) % 4)
+    raw = atob((trimmed + padding).replace(/-/g, '+').replace(/_/g, '/'))
+  } catch {
+    throw new Error('Kunci push server tidak bisa dibaca. Periksa METERAN_VAPID_PUBLIC.')
+  }
+  const bytes = Uint8Array.from(raw, (char) => char.charCodeAt(0))
+  if (bytes.length !== 65 || bytes[0] !== 0x04) {
+    throw new Error('Kunci push server tidak valid. Periksa METERAN_VAPID_PUBLIC.')
+  }
+  return bytes
 }
 
 async function enablePush() {

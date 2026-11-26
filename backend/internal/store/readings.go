@@ -332,6 +332,16 @@ func NormalizeRange(from, to string) (string, string, error) {
 }
 
 // AllReadings returns the full history in ascending order, used by summaries.
+// LatestReadingAt is the newest reading timestamp, empty when the meter has no
+// readings yet.
+func (db *DB) LatestReadingAt() (string, error) {
+	var ts sql.NullString
+	if err := db.SQL.QueryRow(`select max(timestamp) from readings`).Scan(&ts); err != nil {
+		return "", err
+	}
+	return ts.String, nil
+}
+
 func (db *DB) AllReadings() ([]Reading, error) {
 	rows, err := db.SQL.Query(readingSelect + ` order by r.timestamp asc, r.id asc`)
 	if err != nil {
