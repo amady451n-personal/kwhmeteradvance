@@ -1,9 +1,9 @@
 #!/usr/bin/env bash
 # Interactive release driver. No CLI params: pick a menu number.
 #
-# Config lives in ~/.config/meteran/release.env (outside the repo, so no update
-# can remove it) or $RELEASE_ENV; an in-repo scripts/release.env is migrated
-# once. See scripts/release.env.example for the fields.
+# Config lives in scripts/release.env (in-repo, gitignored, so it travels with
+# the checkout). A legacy config under ~/.config/meteran is imported once.
+# Override either with RELEASE_ENV. See scripts/release.env.example for fields.
 #   STB_HOST=192.168.1.10
 #   STB_USER=armbian
 #   STB_DIR=/home/armbian/dipsik
@@ -61,16 +61,14 @@ ask_yes() {
   esac
 }
 
-# Config lives outside the repo so no checkout/update can delete it.
-CONFIG_DIR="${XDG_CONFIG_HOME:-$HOME/.config}/meteran"
-CONFIG_FILE="$CONFIG_DIR/release.env"
+# Config travels with the repo but is gitignored. A host config from an older
+# checkout is copied in once, so this host can be cleaned up afterwards.
+CONFIG_FILE="$ROOT/scripts/release.env"
+LEGACY_FILE="${XDG_CONFIG_HOME:-$HOME/.config}/meteran/release.env"
 
 load_config() {
-  local legacy="$ROOT/scripts/release.env"
-  if [ -z "${RELEASE_ENV:-}" ] && [ ! -f "$CONFIG_FILE" ] && [ -f "$legacy" ]; then
-    # one-time move of the old in-repo file, which stays in place as a backup
-    mkdir -p "$CONFIG_DIR"
-    cp "$legacy" "$CONFIG_FILE"
+  if [ -z "${RELEASE_ENV:-}" ] && [ ! -f "$CONFIG_FILE" ] && [ -f "$LEGACY_FILE" ]; then
+    cp "$LEGACY_FILE" "$CONFIG_FILE"
     chmod 600 "$CONFIG_FILE"
     note "config lama dipindahkan ke $CONFIG_FILE"
   fi
@@ -78,8 +76,7 @@ load_config() {
   local file="${RELEASE_ENV:-$CONFIG_FILE}"
   if [ ! -f "$file" ]; then
     warn "$file belum ada."
-    warn "mkdir -p $CONFIG_DIR && cp scripts/release.env.example $CONFIG_FILE"
-    warn "lalu isi STB_DIR (wajib) dan STB_HOST/STB_USER (hanya mode remote)."
+    warn "cp scripts/release.env.example scripts/release.env lalu isi STB_DIR (wajib) dan STB_HOST/STB_USER (mode remote)."
     exit 1
   fi
   # shellcheck disable=SC1090

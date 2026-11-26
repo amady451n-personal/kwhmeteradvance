@@ -188,14 +188,15 @@ docker buildx build --platform linux/arm64 -t meteranadvanced:latest --load -f b
 ### Rilis ke STB
 
 ```bash
-mkdir -p ~/.config/meteran && cp scripts/release.env.example ~/.config/meteran/release.env   # isi STB_DIR; STB_HOST/STB_USER untuk mode remote
-# config sengaja di luar repo: update/checkout tidak bisa menghapusnya
+cp scripts/release.env.example scripts/release.env   # gitignored; isi STB_DIR; STB_HOST/STB_USER untuk mode remote
 bash scripts/release.sh      # menu: build → push → scp → pull → deploy
 # .env tidak di-track; menu 5 menyalin .env.example → .env kalau belum ada
 bash scripts/backup.sh       # snapshot DB
 ```
 
-Skrip bisa dijalankan di laptop maupun langsung di STB. `STB_MODE=auto` (default) memilih `local` kalau `STB_DIR` ada di mesin itu, selain itu `remote` lewat ssh. Di mode `local`: scp dan `docker load` dilewati, build memakai `docker build` native kalau mesinnya arm64. Paksa dengan `STB_MODE=local|remote` di `~/.config/meteran/release.env`.
+Konfigurasi ada di dalam repo (`scripts/release.env`, gitignored) supaya ikut saat checkout dipindah ke host lain. File lama di `~/.config/meteran/release.env` disalin sekali otomatis bila file dalam repo belum ada; bisa dihapus setelah itu.
+
+Skrip bisa dijalankan di laptop maupun langsung di STB. `STB_MODE=auto` (default) memilih `local` kalau `STB_DIR` ada di mesin itu, selain itu `remote` lewat ssh. Di mode `local`: scp dan `docker load` dilewati, build memakai `docker build` native kalau mesinnya arm64. Paksa dengan `STB_MODE=local|remote` di `scripts/release.env`.
 
 ### Troubleshooting: `attempt to write a readonly database (8)` / `unable to open database file (14)`
 
@@ -253,3 +254,4 @@ Pengingat dikirim sekali per hari WIB setelah `reminderHour`, hanya bila catatan
 | Data contoh | `frontend/src/data/fixture.json` |
 | Ubah kontrak API | `docs/api/openapi.yaml`, lalu `npm run api:types` |
 | Ganti mode data | env `VITE_API_MODE` (`server`), lihat `frontend/src/api/index.ts` |
+| Lanjutkan di host lain | `docs/reference/handoff.md` |
