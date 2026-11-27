@@ -11,6 +11,7 @@ const store = useAppStore()
 const locked = computed(
   () => store.mode === 'server' && store.session != null && !store.session.authenticated,
 )
+const booting = computed(() => store.mode === 'server' && store.loading && !store.ready)
 
 let media: MediaQueryList | null = null
 let timer = 0
@@ -50,5 +51,9 @@ onUnmounted(() => {
 
 <template>
   <LockView v-if="locked" />
+  <div v-else-if="booting" class="boot-screen" role="status" aria-live="polite">
+    <span class="boot-mark">KWH</span>
+    <p>Menyiapkan data…</p>
+  </div>
   <AppShell v-else />
 </template>

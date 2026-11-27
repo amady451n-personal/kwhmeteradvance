@@ -1,4 +1,4 @@
-const CACHE = 'meteran-v2'
+const CACHE = 'meteran-v3'
 const SHELL = ['/', '/index.html', '/manifest.webmanifest', '/icon.svg']
 
 self.addEventListener('install', (event) => {
@@ -58,13 +58,17 @@ self.addEventListener('fetch', (event) => {
         const cached = (await caches.match(request)) || (await caches.match('/index.html'))
         const refresh = fetch(request)
           .then(async (response) => {
-            if (response.ok) {
-              const cache = await caches.open(CACHE)
-              await cache.put('/index.html', response.clone())
-            }
+            if (!response.ok || response.status === 304) return cached || response
+            const cache = await caches.open(CACHE)
+            await cache.put('/index.html', response.clone())
             return response
           })
           .catch(() => null)
+        const quick = await Promise.race([
+          refresh,
+          new Promise<null>((resolve) => setTimeout(() => resolve(null), 1200)),
+        ])
+        if (quick) return quick
         if (cached) {
           event.waitUntil(refresh)
           return cached

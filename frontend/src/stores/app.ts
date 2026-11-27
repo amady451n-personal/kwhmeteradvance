@@ -278,13 +278,26 @@ export const useAppStore = defineStore('app', () => {
   async function init(silent = false) {
     loading.value = true
     error.value = ''
+    if (typeof navigator !== 'undefined' && !navigator.onLine) {
+      offline.value = true
+      if (!hasPinTrace()) error.value = 'Perlu jaringan sekali untuk menyiapkan PIN.'
+      await lock()
+      loading.value = false
+      return
+    }
     try {
-      const [readingsPage, tokensPage, serverSettings, serverView] = await Promise.all([
-        client.listReadings({ limit: 500 }),
-        client.listTokens({ limit: 200 }),
-        client.getSettings(),
-        client.getSummary().catch(() => null),
-      ])
+      const loaded = await withTimeout(
+        Promise.all([
+          client.listReadings({ limit: 500 }),
+          client.listTokens({ limit: 200 }),
+          client.getSettings(),
+          client.getSummary().catch(() => null),
+        ]),
+        8000,
+        () => null,
+      )
+      if (!loaded) throw new ApiError(0, 'network_error', 'Tidak ada koneksi ke server.')
+      const [readingsPage, tokensPage, serverSettings, serverView] = loaded
       readings.value = readingsPage.data
       session.value = await client.getSession().catch(() => null)
       tokens.value = tokensPage.data
