@@ -74,7 +74,7 @@ func newRateLimiter(limit int, window time.Duration) *rateLimiter {
 	}
 }
 
-func (rl *rateLimiter) allow(key string, now time.Time) bool {
+func (rl *rateLimiter) allow(key string, now time.Time) (bool, int) {
 	rl.mu.Lock()
 	defer rl.mu.Unlock()
 	bucket, ok := rl.buckets[key]
@@ -82,7 +82,7 @@ func (rl *rateLimiter) allow(key string, now time.Time) bool {
 		bucket = rateBucket{reset: now.Add(rl.window)}
 	}
 	if bucket.count >= rl.limit {
-		return false
+		return false, 0
 	}
 	bucket.count++
 	rl.buckets[key] = bucket
@@ -94,14 +94,16 @@ func (rl *rateLimiter) allow(key string, now time.Time) bool {
 		}
 		rl.lastClean = now
 	}
-	return true
+	return true, rl.limit - bucket.count
 }
 
 func (rl *rateLimiter) wrap(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		// Static shell and service worker must always load; only API calls are
 		// worth throttling. Otherwise a hard reload trips the limit itself.
-		if !strings.HasPrefix(r.URL.Path, "/api/") {
+		if !strings.HasPrefix(r.URL.Path, "/api/") ||
+			r.URL.Path == "/api/health" ||
+			strings.HasPrefix(r.URL.Path, "/api/session") {
 			next.ServeHTTP(w, r)
 			return
 		}
@@ -121,10 +123,12 @@ func (rl *rateLimiter) wrap(next http.Handler) http.Handler {
 				key = r.RemoteAddr
 			}
 		}
-		if !rl.allow(key, time.Now()) {
-			log.Printf("rate limit: ip=%s path=%s", key, r.URL.Path)
+		allowed, remaining := rl.allow(key, time.Now())
+		w.Header().Set("X-RateLimit-Limit", strconv.Itoa(rl.limit))
+		w.Header().Set("X-RateLimit-Remaining", strconv.Itoa(remaining))
+		if !allowed {
+			log.Printf("rate limit: ip=%s path=%s limit=%d", key, r.URL.Path, rl.limit)
 			w.Header().Set("Retry-After", "60")
-			w.Header().Set("X-RateLimit-Limit", strconv.Itoa(rl.limit))
 			Fail(w, http.StatusTooManyRequests, CodeRateLimited, "Terlalu banyak permintaan. Coba lagi nanti.")
 			return
 		}

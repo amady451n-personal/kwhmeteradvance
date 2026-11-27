@@ -23,7 +23,7 @@ services:
       GOMAXPROCS: ${GOMAXPROCS:-1}
       GOGC: ${GOGC:-50}
       GOMEMLIMIT: ${GOMEMLIMIT:-16MiB}
-      METERAN_RATE_LIMIT: ${METERAN_RATE_LIMIT:-600}
+      METERAN_RATE_LIMIT: ${METERAN_RATE_LIMIT:-3000}
     healthcheck:
       test: ["CMD", "curl", "-sf", "http://localhost:8080/api/health"]
       interval: 30s

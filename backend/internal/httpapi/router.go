@@ -87,7 +87,7 @@ func (s *Server) Handler() http.Handler {
 	}
 
 	// A single noisy client (or scanner) must not fill the log and starve the STB.
-	limit := 600
+	limit := 3000
 	if n, err := strconv.Atoi(os.Getenv("METERAN_RATE_LIMIT")); err == nil && n >= 60 {
 		limit = n
 	}
