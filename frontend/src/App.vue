@@ -38,7 +38,7 @@ onMounted(() => {
 })
 
 function retry() {
-  void store.init().then(() => store.syncPending())
+  void store.init()
 }
 
 onUnmounted(() => {

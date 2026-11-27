@@ -25,6 +25,7 @@ import {
 import type { DrainOutcome, QueuedReading, QueuedToken } from '../api/queue'
 import type { ReadingInput, Settings as ApiSettings, SettingsPatch, TokenCreate } from '../api'
 import { DEFAULT_DENOMINATIONS, readingViews, summarize } from '../domain/energy'
+import { shouldRefreshAfterDrain } from '../domain/queue-refresh.ts'
 import { formatDate, formatRelative } from '../domain/format'
 import type { Reading, Summary, TokenRecord } from '../domain/types'
 
@@ -226,7 +227,9 @@ export const useAppStore = defineStore('app', () => {
     pendingTokens.value = await getPending()
     pendingReadings.value = await getPendingReadings()
     if (remaining !== before) persistSnapshot()
-    if (remaining === 0) void init(true)
+    // Guard the recursion: init() itself calls syncPending(), so an empty
+    // queue must never trigger another init.
+    if (shouldRefreshAfterDrain(before, remaining)) void init(true)
   }
 
   async function discardPending(id: string) {
