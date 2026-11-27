@@ -14,6 +14,7 @@ const locked = computed(
 
 let media: MediaQueryList | null = null
 let timer = 0
+let syncTimer = 0
 
 function syncTheme() {
   if (!media) return
@@ -30,18 +31,20 @@ onMounted(() => {
   syncTheme()
   media.addEventListener('change', syncTheme)
   timer = window.setInterval(() => store.tick(), 60_000)
+  syncTimer = window.setInterval(() => void store.syncPending(), 30_000)
   window.addEventListener('online', retry)
   void store.init()
 })
 
 function retry() {
-  void store.init()
+  void store.init().then(() => store.syncPending())
 }
 
 onUnmounted(() => {
   media?.removeEventListener('change', syncTheme)
   window.removeEventListener('online', retry)
   window.clearInterval(timer)
+  window.clearInterval(syncTimer)
 })
 </script>
 

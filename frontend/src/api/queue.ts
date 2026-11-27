@@ -131,7 +131,9 @@ export async function drainQueue(
   upsertReading: (id: string, input: ReadingInput) => Promise<DrainOutcome>,
   createToken: (id: string, input: TokenCreate) => Promise<DrainOutcome>,
 ): Promise<number> {
-  const items = await load()
+  const items = (await load()).sort(
+    (a, b) => (a.kind === 'reading' ? 0 : 1) - (b.kind === 'reading' ? 0 : 1),
+  )
   for (let index = 0; index < items.length; index++) {
     const item = items[index]
     if (isFailed(item)) continue

@@ -2,13 +2,35 @@ import { computed, reactive, ref } from 'vue'
 import { defineStore } from 'pinia'
 import { apiClient, ApiError } from '../api'
 import { summaryFromApi } from '../api/mappers'
-import { drainQueue, enqueueReading, queueSize } from '../api/queue'
+import {
+  clearOffline,
+  hasPinTrace,
+  loadSnapshot,
+  rememberPin,
+  saveSnapshot,
+  verifyPin,
+} from '../api/offline.ts'
+import {
+  drainQueue,
+  enqueueReading,
+  enqueueToken,
+  getPending,
+  queueSize,
+  removePending,
+} from '../api/queue'
+import type { DrainOutcome, QueuedToken } from '../api/queue'
 import type { ReadingInput, Settings as ApiSettings, SettingsPatch, TokenCreate } from '../api'
 import { DEFAULT_DENOMINATIONS, readingViews, summarize } from '../domain/energy'
 import { formatDate, formatRelative } from '../domain/format'
 import type { Reading, Summary, TokenRecord } from '../domain/types'
 
 const PREVIEW_KEY = 'meteran.preview.dismissed'
+
+interface Snapshot {
+  readings: Reading[]
+  tokens: TokenRecord[]
+  settings: Settings
+}
 
 interface Settings {
   buffer: number
@@ -74,6 +96,8 @@ export const useAppStore = defineStore('app', () => {
   const offline = ref(false)
   const error = ref('')
   const queuedCount = ref(queueSize())
+  const pendingTokens = ref<QueuedToken[]>([])
+  const pendingCount = computed(() => pendingTokens.value.length)
   const session = ref<{ authenticated: boolean; pinSet: boolean } | null>(null)
   const toast = reactive({ open: false, message: '' })
 
@@ -94,9 +118,12 @@ export const useAppStore = defineStore('app', () => {
   const views = computed(() => readingViews(readings.value))
   const latest = computed(() => summary.value.latest)
   const stock = computed(() => summary.value.tokenStock)
-  const sourceLabel = computed(() =>
-    client.mode === 'preview' ? 'Mode pratinjau perangkat' : 'Server tersambung',
-  )
+  const sourceLabel = computed(() => {
+    if (client.mode === 'preview') return 'Mode pratinjau perangkat'
+    if (offline.value)
+      return pendingCount.value ? `Data perangkat · ${pendingCount.value} tertunda` : 'Data perangkat'
+    return 'Server tersambung'
+  })
   const inputStatus = computed(() => {
     if (!summary.value.latestMs)
       return { label: 'Belum ada catatan', color: 'error', level: 'late' as const }
@@ -109,6 +136,7 @@ export const useAppStore = defineStore('app', () => {
 
   async function login(pin: string) {
     await client.login(pin)
+    await rememberPin(pin)
     session.value = { authenticated: true, pinSet: session.value?.pinSet ?? true }
     await init()
   }
@@ -123,11 +151,14 @@ export const useAppStore = defineStore('app', () => {
 
   async function logout() {
     await client.logout().catch(() => {})
+    clearOffline()
+    pendingTokens.value = []
     await lock()
   }
 
   async function setPin(currentPin: string | null, newPin: string) {
     await client.setPin(currentPin, newPin)
+    await rememberPin(newPin)
     session.value = { authenticated: true, pinSet: true }
     await init()
   }
@@ -135,6 +166,71 @@ export const useAppStore = defineStore('app', () => {
   function notify(message: string) {
     toast.message = message
     toast.open = true
+  }
+
+  function persistSnapshot() {
+    if (client.mode !== 'server') return
+    void saveSnapshot({
+      readings: [...readings.value],
+      tokens: [...tokens.value],
+      settings: { ...settings, denominations: [...settings.denominations] },
+    }).catch(() => {})
+  }
+
+  async function syncPending() {
+    if (client.mode !== 'server') return
+    const before = queueSize()
+    const asOutcome = (caught: unknown): DrainOutcome => {
+      if (caught instanceof ApiError && !caught.isOffline && caught.status < 500) {
+        return { ok: false, retryable: false, message: caught.message }
+      }
+      return { ok: false, retryable: true, message: caught instanceof Error ? caught.message : 'Gagal' }
+    }
+    const remaining = await drainQueue(
+      async (id, input) => {
+        try {
+          await client.upsertReading(id, input)
+          return { ok: true }
+        } catch (caught) {
+          return asOutcome(caught)
+        }
+      },
+      async (id, input) => {
+        try {
+          await client.createToken({ ...input, id })
+          return { ok: true }
+        } catch (caught) {
+          return asOutcome(caught)
+        }
+      },
+    ).catch(() => queueSize())
+    queuedCount.value = remaining
+    pendingTokens.value = await getPending()
+    if (remaining !== before) persistSnapshot()
+    if (remaining === 0 && offline.value) void init(true)
+  }
+
+  async function discardPending(id: string) {
+    queuedCount.value = await removePending(id)
+    pendingTokens.value = await getPending()
+  }
+
+  async function unlockOffline(pin: string): Promise<boolean> {
+    if (!(await verifyPin(pin))) return false
+    const data = await loadSnapshot<Snapshot>()
+    if (data) {
+      readings.value = Array.isArray(data.readings) ? data.readings : []
+      tokens.value = Array.isArray(data.tokens) ? data.tokens : []
+      if (data.settings) Object.assign(settings, data.settings)
+    }
+    session.value = { authenticated: true, pinSet: true }
+    offline.value = true
+    loading.value = false
+    ready.value = true
+    pendingTokens.value = await getPending()
+    queuedCount.value = queueSize()
+    void init(true)
+    return true
   }
 
   function tick() {
@@ -145,7 +241,7 @@ export const useAppStore = defineStore('app', () => {
     serverSummary.value = summaryFromApi(await client.getSummary(settings.avgWindow))
   }
 
-  async function init() {
+  async function init(silent = false) {
     loading.value = true
     error.value = ''
     try {
@@ -162,14 +258,14 @@ export const useAppStore = defineStore('app', () => {
       serverSummary.value = serverView ? summaryFromApi(serverView) : null
       offline.value = false
       ready.value = true
-      if (queuedCount.value > 0) {
-        queuedCount.value = await drainQueue((id, body) => client.upsertReading(id, body)).catch(
-          () => queuedCount.value,
-        )
-      }
+      persistSnapshot()
+      await syncPending()
     } catch (caught) {
       if (caught instanceof ApiError && caught.status === 401) {
-        await lock()
+        if (!silent) await lock()
+      } else if (caught instanceof ApiError && caught.isOffline && hasPinTrace()) {
+        offline.value = true
+        if (!silent) await lock()
       } else {
         offline.value = caught instanceof ApiError && caught.isOffline
         error.value = caught instanceof Error ? caught.message : 'Gagal memuat data.'
@@ -227,8 +323,8 @@ export const useAppStore = defineStore('app', () => {
     }
   }
 
-  function keepQueued(id: string, input: NewReading) {
-    queuedCount.value = enqueueReading(id, payload(input, id))
+  async function keepQueued(id: string, input: NewReading) {
+    queuedCount.value = await enqueueReading(id, payload(input, id))
     offline.value = true
     const next = localReading(id, input)
     const index = readings.value.findIndex((row) => row.id === id)
@@ -245,13 +341,14 @@ export const useAppStore = defineStore('app', () => {
       readings.value.push(created)
     } catch (caught) {
       if (caught instanceof ApiError && caught.isOffline) {
-        keepQueued(id, input)
+        await keepQueued(id, input)
         return
       }
       return fail(caught)
     }
     serverSummary.value = null
     notify('Catatan meter tersimpan.')
+    persistSnapshot()
     return refreshSummary().catch(() => {})
   }
 
@@ -262,13 +359,14 @@ export const useAppStore = defineStore('app', () => {
       if (index >= 0) readings.value[index] = updated
     } catch (caught) {
       if (caught instanceof ApiError && caught.isOffline) {
-        keepQueued(id, input)
+        await keepQueued(id, input)
         return
       }
       return fail(caught)
     }
     serverSummary.value = null
     notify('Catatan meter diperbarui.')
+    persistSnapshot()
     return refreshSummary().catch(() => {})
   }
 
@@ -283,6 +381,7 @@ export const useAppStore = defineStore('app', () => {
     }
     serverSummary.value = null
     notify('Catatan meter dihapus.')
+    persistSnapshot()
     return refreshSummary().catch(() => {})
   }
 
@@ -292,10 +391,20 @@ export const useAppStore = defineStore('app', () => {
       const created = await client.createToken(body)
       tokens.value.unshift(created)
     } catch (caught) {
+      if (caught instanceof ApiError && caught.isOffline) {
+        const id = crypto.randomUUID()
+        queuedCount.value = await enqueueToken(id, body)
+        pendingTokens.value = await getPending()
+        offline.value = true
+        serverSummary.value = null
+        notify('Token menunggu antrean.')
+        return
+      }
       return fail(caught)
     }
     serverSummary.value = null
     notify('Token tersimpan.')
+    persistSnapshot()
     return refreshSummary().catch(() => {})
   }
 
@@ -379,6 +488,7 @@ export const useAppStore = defineStore('app', () => {
       applySettings(settings, await client.patchSettings(body))
       serverSummary.value = null
       await refreshSummary()
+      persistSnapshot()
     } catch (caught) {
       fail(caught)
     }
@@ -403,6 +513,11 @@ export const useAppStore = defineStore('app', () => {
     ready,
     offline,
     queuedCount,
+    pendingTokens,
+    pendingCount,
+    syncPending,
+    unlockOffline,
+    discardPending,
     session,
     login,
     logout,

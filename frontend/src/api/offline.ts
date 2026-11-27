@@ -45,7 +45,7 @@ async function derive(pin: string, salt: Uint8Array): Promise<Uint8Array> {
     'deriveBits',
   ])
   const bits = await crypto.subtle.deriveBits(
-    { name: 'PBKDF2', hash: 'SHA-256', salt, iterations: 120_000 },
+    { name: 'PBKDF2', hash: 'SHA-256', salt: salt as BufferSource, iterations: 120_000 },
     key,
     256,
   )
@@ -76,7 +76,7 @@ export async function ensureDataKey(): Promise<CryptoKey> {
     raw = toBase64(crypto.getRandomValues(new Uint8Array(32)))
     localStorage.setItem(DATA_KEY, raw)
   }
-  return crypto.subtle.importKey('raw', fromBase64(raw), 'AES-GCM', false, [
+  return crypto.subtle.importKey('raw', fromBase64(raw) as BufferSource, 'AES-GCM', false, [
     'encrypt',
     'decrypt',
   ])
@@ -98,9 +98,9 @@ export async function sealText(text: string): Promise<string> {
 export async function openText(sealed: string): Promise<string> {
   const body = fromBase64(sealed)
   const decrypted = await crypto.subtle.decrypt(
-    { name: 'AES-GCM', iv: body.subarray(0, 12) },
+    { name: 'AES-GCM', iv: body.subarray(0, 12) as BufferSource },
     await ensureDataKey(),
-    body.subarray(12),
+    body.subarray(12) as BufferSource,
   )
   return decoder.decode(decrypted)
 }

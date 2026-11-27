@@ -80,3 +80,15 @@ test('4xx entry is failed, kept, and never replayed', async () => {
   assert.equal(q.queueSize(), 1)
   assert.equal(await q.removePending('bad'), 0)
 })
+
+test('drain replays readings before tokens', async () => {
+  reset()
+  await q.enqueueToken('tok', { code: 'Z', kwh: 1, cost: 1 } as never)
+  await q.enqueueReading('r', { id: 'r', reading: 10, timestamp: '2026-11-27T08:00:00+07:00' } as never)
+  const seen: string[] = []
+  await q.drainQueue(
+    async (id) => { seen.push(`reading:${id}`); return { ok: true as const } },
+    async (id) => { seen.push(`token:${id}`); return { ok: true as const } },
+  )
+  assert.deepEqual(seen, ['reading:r', 'token:tok'])
+})
