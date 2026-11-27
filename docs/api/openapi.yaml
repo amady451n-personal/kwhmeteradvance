@@ -1166,11 +1166,13 @@ components:
           type: [string, 'null']
         canDelete:
           type: boolean
+          description: >
+            true untuk token belum dipakai; untuk token terpakai/terkunci, true
+            setelah 50 pengisian token lain tercatat.
         deleteBlockedReason:
           type: [string, 'null']
           enum:
             - null
-            - not_locked
             - refills_pending
         lockedAt:
           type: [string, 'null']

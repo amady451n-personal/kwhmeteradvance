@@ -282,7 +282,7 @@ func TestTokenFlowAndErrors(t *testing.T) {
 	}
 	var token store.Token
 	decodeData(t, rec, &token)
-	if token.Status != "unused" || !token.HasCode || token.CanDelete {
+	if token.Status != "unused" || !token.HasCode || !token.CanDelete {
 		t.Fatalf("token = %+v", token)
 	}
 

@@ -159,28 +159,41 @@ func (db *DB) GetToken(id string) (Token, error) {
 	return list[0], nil
 }
 
-// decorateTokens fills derived fields. FR-13: a locked token may be deleted
-// once 50 top-ups have been recorded after it locked.
+// decorateTokens fills derived fields. An unused token can be deleted right
+// away; a used or locked token becomes deletable after 50 later top-ups.
 func (db *DB) decorateTokens(list []Token) error {
 	for i := range list {
 		t := &list[i]
-		if t.Status == "locked" && t.LockedAt != nil {
+		if t.Status == "unused" {
+			t.CanDelete = true
+			t.DeleteBlockedReason = nil
+		} else {
+			since := t.PurchasedAt
+			if t.Status == "locked" && t.LockedAt != nil {
+				since = *t.LockedAt
+			} else if t.LinkedReadingID != nil {
+				var linked string
+				err := db.SQL.QueryRow(`select timestamp from readings where id = ?`, *t.LinkedReadingID).Scan(&linked)
+				if err != nil && !isNoRows(err) {
+					return err
+				}
+				if err == nil {
+					since = linked
+				}
+			}
 			var n int
 			err := db.SQL.QueryRow(`select count(*) from readings
-				where recharge_amount is not null and recharge_amount > 0 and timestamp > ?`, *t.LockedAt).Scan(&n)
+				where recharge_amount is not null and recharge_amount > 0 and timestamp > ?`, since).Scan(&n)
 			if err != nil {
 				return err
 			}
 			t.RefillsSinceLock = &n
 			t.CanDelete = n >= 50
+			t.DeleteBlockedReason = nil
 			if !t.CanDelete {
 				reason := "refills_pending"
 				t.DeleteBlockedReason = &reason
 			}
-		} else {
-			reason := "not_locked"
-			t.DeleteBlockedReason = &reason
-			t.CanDelete = false
 		}
 		t.DenominationMismatch = denominationMismatch(t.Cost, t.Denomination)
 	}

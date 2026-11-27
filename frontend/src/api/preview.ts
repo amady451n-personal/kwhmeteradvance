@@ -258,11 +258,7 @@ function writeToken(id: string, input: TokenUpsert): Token {
       hasCode: existing?.hasCode ?? Boolean(input.code),
       linkedReadingId: existing?.linkedReadingId ?? null,
       canDelete: deletable(existing),
-      deleteBlockedReason: deletable(existing)
-        ? null
-        : existing?.linkedReadingId
-          ? 'refills_pending'
-          : 'not_locked',
+      deleteBlockedReason: deletable(existing) ? null : 'refills_pending',
       lockedAt: existing?.lockedAt ?? null,
       refillsSinceLock: existing?.refillsSinceLock ?? null,
       createdAt: existing?.createdAt ?? now,

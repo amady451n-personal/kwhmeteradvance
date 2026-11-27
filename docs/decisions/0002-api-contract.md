@@ -42,3 +42,7 @@
 - Server tetap otoritatif setelah `GET /api/summary` berhasil; hitungan lokal hanya fallback.
 - Antrean offline hanya untuk `PUT /api/readings/{id}`; aksi non-idempoten (mark-used, impor, push) menunggu koneksi.
 - Efek ke UI: ID string, field camelCase, `409 confirmation_required` ditangani dialog, status token `unused`/`used`/`locked`.
+
+## Revisi 2026-11-27 18:12 WIB
+
+`canDelete` juga true untuk token `unused`. Untuk token `used`/`locked`, true setelah 50 pengisian token lain sejak pembacaan tertaut atau `lockedAt`. `deleteBlockedReason` tidak lagi memakai `not_locked`; nilai yang mungkin hanya `null` atau `refills_pending`. Kontrak, store, dan klien pratinjau sudah diselaraskan.

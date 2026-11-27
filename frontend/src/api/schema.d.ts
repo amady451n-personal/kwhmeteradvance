@@ -336,7 +336,9 @@ export interface paths {
         post?: never;
         /**
          * Hapus pembacaan
-         * @description Pembacaan yang tertaut token terkunci tidak dapat dihapus.
+         * @description Pembacaan yang tertaut token terkunci tidak dapat dihapus. Menghapus
+         *     pembacaan yang tertaut token belum terkunci mengembalikan token itu ke
+         *     `unused` (sama dengan FR-13 langkah 4).
          */
         delete: {
             parameters: {
@@ -1407,9 +1409,10 @@ export interface components {
             /** @description Kode disimpan, kirim lewat endpoint reveal untuk membacanya. */
             hasCode: boolean;
             linkedReadingId: string | null;
+            /** @description true untuk token belum dipakai; untuk token terpakai/terkunci, true setelah 50 pengisian token lain tercatat. */
             canDelete: boolean;
             /** @enum {string|null} */
-            deleteBlockedReason: null | "not_locked" | "refills_pending";
+            deleteBlockedReason: null | "refills_pending";
             /** Format: date-time */
             lockedAt: string | null;
             /** @description Jumlah pengisian token sejak token ini terkunci (FR-13). */

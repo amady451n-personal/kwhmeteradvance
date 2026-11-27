@@ -23,7 +23,7 @@ func newToken(t *testing.T, db *DB, id string) Token {
 func TestCreateTokenStoresEncryptedCode(t *testing.T) {
 	db := testDB(t)
 	tok := newToken(t, db, "t1")
-	if tok.Status != "unused" || !tok.HasCode || tok.CanDelete {
+	if tok.Status != "unused" || !tok.HasCode || !tok.CanDelete {
 		t.Fatalf("token = %+v", tok)
 	}
 	var raw []byte
@@ -59,6 +59,54 @@ func TestPatchUsedTokenRejected(t *testing.T) {
 	var val ErrValidation
 	if !errors.As(err, &val) {
 		t.Fatalf("expected validation error, got %v", err)
+	}
+}
+
+func TestUnusedTokenCanBeDeleted(t *testing.T) {
+	db := testDB(t)
+	newToken(t, db, "t1")
+	if err := db.DeleteToken("t1"); err != nil {
+		t.Fatalf("unused token must be deletable: %v", err)
+	}
+}
+
+func TestUsedTokenDeletableAfterFiftyRefills(t *testing.T) {
+	db := testDB(t)
+	newToken(t, db, "t1")
+	if _, _, err := db.MarkTokenUsed("t1", ReadingInput{Reading: f64(166), Timestamp: at(-5 * time.Hour)}); err != nil {
+		t.Fatal(err)
+	}
+	used, err := db.GetToken("t1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if used.Status != "used" || used.CanDelete {
+		t.Fatalf("used token = %+v", used)
+	}
+	// A drop locks the token; refills after the lock count toward deletion.
+	if _, err := db.UpsertReading(ReadingInput{ID: "low", Reading: f64(5), Timestamp: at(-4*time.Hour - 30*time.Minute)}); err != nil {
+		t.Fatal(err)
+	}
+	for i := 0; i < 50; i++ {
+		_, err := db.UpsertReading(ReadingInput{
+			ID: "refill-" + string(rune('a'+i%26)) + string(rune('a'+i/26)),
+			Reading: f64(50), Timestamp: at(-4*time.Hour + time.Duration(i)*time.Minute),
+			RechargeAmount: f64(20),
+			Confirm:        []string{ConfirmDuplicateTimestamp, ConfirmIncreasedWithoutTopup},
+		})
+		if err != nil {
+			t.Fatal(err)
+		}
+	}
+	again, err := db.GetToken("t1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !again.CanDelete {
+		t.Fatalf("used token should be deletable after 50 refills: %+v", again)
+	}
+	if err := db.DeleteToken("t1"); err != nil {
+		t.Fatal(err)
 	}
 }
 
