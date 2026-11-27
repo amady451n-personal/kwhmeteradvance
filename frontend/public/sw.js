@@ -1,5 +1,6 @@
-const CACHE = 'meteran-v4'
+const CACHE = 'meteran-v5'
 const SHELL = ['/', '/index.html', '/manifest.webmanifest', '/icon.svg']
+const OFFLINE_HTML = `<!doctype html><html lang="id"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>meteran</title><body style="font-family:system-ui;background:#F6F3EB;color:#15201D;display:grid;place-items:center;min-height:100vh;margin:0"><main style="max-width:320px;text-align:center"><h1 style="color:#0D5C53;font-size:20px;letter-spacing:.14em">KWH</h1><p>Belum bisa memuat aplikasi. Periksa koneksi, lalu coba lagi.</p><button onclick="location.reload()" style="background:#0D5C53;color:#fff;border:0;border-radius:8px;padding:12px 20px;font-size:14px">Coba lagi</button></main></body></html>`
 
 self.addEventListener('install', (event) => {
   // A flaky proxy must not block SW installation: keep whatever we can cache.
@@ -70,7 +71,11 @@ self.addEventListener('fetch', (event) => {
               (async () => {
                 const cache = await caches.open(CACHE)
                 await cache.put('/index.html', response.clone())
-                await Promise.allSettled(assets.map((url) => cache.add(url)))
+                await Promise.allSettled(
+                  assets.map(async (url) => {
+                    if (!(await cache.match(url))) await cache.add(url)
+                  }),
+                )
               })(),
             )
             return response
@@ -85,7 +90,12 @@ self.addEventListener('fetch', (event) => {
           event.waitUntil(refresh)
           return cached
         }
-        return (await refresh) || Response.error()
+        return (
+          (await refresh) ||
+          new Response(OFFLINE_HTML, {
+            headers: { 'Content-Type': 'text/html; charset=utf-8' },
+          })
+        )
       })(),
     )
     return

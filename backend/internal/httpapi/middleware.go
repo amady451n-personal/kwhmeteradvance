@@ -98,6 +98,12 @@ func (rl *rateLimiter) allow(key string, now time.Time) bool {
 
 func (rl *rateLimiter) wrap(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		// Static shell and service worker must always load; only API calls are
+		// worth throttling. Otherwise a hard reload trips the limit itself.
+		if !strings.HasPrefix(r.URL.Path, "/api/") {
+			next.ServeHTTP(w, r)
+			return
+		}
 		key := r.Header.Get("X-Forwarded-For")
 		if comma := strings.IndexByte(key, ','); comma >= 0 {
 			key = key[:comma]

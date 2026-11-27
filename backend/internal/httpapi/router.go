@@ -85,7 +85,7 @@ func (s *Server) Handler() http.Handler {
 	}
 
 	// A single noisy client (or scanner) must not fill the log and starve the STB.
-	limiter := newRateLimiter(300, time.Minute)
+	limiter := newRateLimiter(600, time.Minute)
 	return recoverer(logger(limiter.wrap(mux)))
 }
 

@@ -24,6 +24,22 @@ func TestRateLimiterBlocksOverLimit(t *testing.T) {
 	}
 }
 
+func TestRateLimitSkipsStaticAssets(t *testing.T) {
+	rl := newRateLimiter(1, time.Minute)
+	h := rl.wrap(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	}))
+	req := httptest.NewRequest(http.MethodGet, "/assets/index.js", nil)
+	req.Header.Set("X-Forwarded-For", "8.8.8.8")
+	for i := 0; i < 3; i++ {
+		rec := httptest.NewRecorder()
+		h.ServeHTTP(rec, req)
+		if rec.Code != http.StatusOK {
+			t.Fatalf("static request %d = %d", i, rec.Code)
+		}
+	}
+}
+
 func TestRateLimitMiddlewareReturns429(t *testing.T) {
 	rl := newRateLimiter(1, time.Minute)
 	h := rl.wrap(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
