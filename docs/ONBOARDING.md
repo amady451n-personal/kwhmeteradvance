@@ -214,7 +214,7 @@ Data ada di folder host (`METERAN_DATA_DIR`, default `./data` di samping `compos
 docker run --rm -v meteranadvanced-data:/from -v "$PWD/data:/to" alpine sh -c 'cp -a /from/. /to/'
 ```
 
-Catatan verifikasi: antrean offline (`localStorage('meteran.queue.v1')`) belum diuji terhadap backend nyata di STB; uji manual (putus jaringan → tambah catatan → pulihkan) saat pertama kali server mode dipakai.
+Catatan verifikasi (2026-11-27 11:21 WIB): antrean reading sudah diuji terhadap backend nyata; skenario offline penuh untuk token juga sudah diuji dengan backend `VITE_API_MODE=server` di `localhost` dan permintaan `/api/*` diblokir. Hasil: PIN wajib tetap berlaku, saldo + enam catatan tampil dari salinan terenkripsi, token baru muncul sebagai "Tertunda" tanpa kode terbaca di `localStorage`, PIN salah tetap terkunci, dan logout menghapus PIN + salinan tetapi mempertahankan antrean. Token yang ditolak server dengan 4xx berlabel "Gagal" dan bisa dihapus; token dengan biaya di luar toleransi denominasi memerlukan konfirmasi, jadi saat replay dapat berstatus "Gagal" sampai konfirmasi tersedia. Service worker `meteran-v2` tidak meng-cache respons `/api/*`.
 
 ### Notifikasi push
 
