@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue'
 import { useAppStore } from '../stores/app'
+import { hasPinTrace } from '../api/offline.ts'
 
 const store = useAppStore()
 const pin = ref('')
@@ -49,7 +50,20 @@ async function submit() {
     if (setup.value) await store.setPin(null, pin.value)
     else await store.login(pin.value)
   } catch (caught) {
-    error.value = caught instanceof Error ? caught.message : 'Gagal membuka aplikasi.'
+    error.value = ''
+    if (store.offline && hasPinTrace()) {
+      store.error = ''
+      if (await store.unlockOffline(pin.value)) {
+        pin.value = ''
+        confirmPin.value = ''
+        return
+      }
+      error.value = store.error || 'PIN salah.'
+    } else if (store.offline) {
+      error.value = 'Perlu jaringan sekali untuk menyiapkan PIN.'
+    } else {
+      error.value = caught instanceof Error ? caught.message : 'Gagal membuka aplikasi.'
+    }
     pin.value = ''
     confirmPin.value = ''
   } finally {

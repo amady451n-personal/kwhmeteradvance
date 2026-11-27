@@ -218,11 +218,13 @@ export const useAppStore = defineStore('app', () => {
   async function unlockOffline(pin: string): Promise<boolean> {
     if (!(await verifyPin(pin))) return false
     const data = await loadSnapshot<Snapshot>()
-    if (data) {
-      readings.value = Array.isArray(data.readings) ? data.readings : []
-      tokens.value = Array.isArray(data.tokens) ? data.tokens : []
-      if (data.settings) Object.assign(settings, data.settings)
+    if (!data) {
+      error.value = 'Belum ada salinan di perangkat. Hubungkan sekali untuk mengisi.'
+      return false
     }
+    readings.value = Array.isArray(data.readings) ? data.readings : []
+    tokens.value = Array.isArray(data.tokens) ? data.tokens : []
+    if (data.settings) Object.assign(settings, data.settings)
     session.value = { authenticated: true, pinSet: true }
     offline.value = true
     loading.value = false

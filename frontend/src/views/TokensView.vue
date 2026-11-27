@@ -162,6 +162,47 @@ async function reveal(token: TokenRecord) {
       {{ store.error }}
     </v-alert>
 
+    <section
+      v-if="store.pendingTokens.length"
+      class="token-list pending-list"
+      aria-label="Token menunggu sinkron"
+    >
+      <article
+        v-for="entry in store.pendingTokens"
+        :key="entry.id"
+        class="surface-card token-row"
+      >
+        <div class="token-main">
+          <div class="token-amount tabular">
+            {{ formatKwh(entry.input.kwh) }} <span>kWh</span>
+          </div>
+          <div class="token-meta">
+            <span>{{ formatDateTime(entry.input.purchasedAt) }}</span>
+            <span>{{ formatRupiah(entry.input.cost) }}</span>
+            <span>{{ entry.input.type === 'bulk' ? 'Isi besar' : 'Tambahan' }}</span>
+          </div>
+        </div>
+        <div class="token-side">
+          <v-chip
+            :color="entry.delivery === 'failed' ? 'error' : 'warning'"
+            variant="tonal"
+            size="small"
+          >
+            {{ entry.delivery === 'failed' ? `Gagal: ${entry.error ?? ''}` : 'Tertunda' }}
+          </v-chip>
+          <v-btn
+            v-if="entry.delivery === 'failed'"
+            variant="text"
+            size="small"
+            :aria-label="`Hapus token gagal ${formatKwh(entry.input.kwh)} kWh`"
+            @click="store.discardPending(entry.id)"
+          >
+            Hapus
+          </v-btn>
+        </div>
+      </article>
+    </section>
+
     <section v-if="tokens.length" class="token-list" aria-label="Daftar token">
       <article
         v-for="token in tokens"
@@ -231,7 +272,7 @@ async function reveal(token: TokenRecord) {
       </article>
     </section>
 
-    <section v-else class="surface-card empty-state">
+    <section v-else-if="!store.pendingTokens.length" class="surface-card empty-state">
       <v-icon icon="mdi-ticket-confirmation-outline" size="32" />
       <h2>Belum ada token tersimpan</h2>
       <p>
