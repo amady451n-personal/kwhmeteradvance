@@ -55,14 +55,21 @@ self.addEventListener('fetch', (event) => {
   if (request.mode === 'navigate') {
     event.respondWith(
       (async () => {
-        try {
-          const response = await fetch(request)
-          const cache = await caches.open(CACHE)
-          await cache.put('/index.html', response.clone())
-          return response
-        } catch {
-          return (await caches.match(request)) || (await caches.match('/index.html'))
+        const cached = (await caches.match(request)) || (await caches.match('/index.html'))
+        const refresh = fetch(request)
+          .then(async (response) => {
+            if (response.ok) {
+              const cache = await caches.open(CACHE)
+              await cache.put('/index.html', response.clone())
+            }
+            return response
+          })
+          .catch(() => null)
+        if (cached) {
+          event.waitUntil(refresh)
+          return cached
         }
+        return (await refresh) || Response.error()
       })(),
     )
     return

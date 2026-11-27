@@ -133,7 +133,7 @@ const tariff = computed(() => store.summary.tariffComparison)
             <strong>{{ formatDays(summary.daysLeft) }}</strong>
           </div>
           <v-btn
-            v-if="!smAndDown"
+            v-if="!smAndDown && !store.offline"
             color="primary"
             size="large"
             prepend-icon="mdi-plus"
@@ -298,7 +298,7 @@ const tariff = computed(() => store.summary.tariffComparison)
     </section>
 
     <v-btn
-      v-if="smAndDown"
+      v-if="smAndDown && !store.offline"
       color="primary"
       size="large"
       prepend-icon="mdi-plus"

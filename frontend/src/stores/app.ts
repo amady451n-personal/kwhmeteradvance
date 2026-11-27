@@ -274,6 +274,10 @@ export const useAppStore = defineStore('app', () => {
       } else if (caught instanceof ApiError && caught.isOffline && hasPinTrace()) {
         offline.value = true
         if (!silent) await lock()
+      } else if (caught instanceof ApiError && caught.isOffline) {
+        offline.value = true
+        error.value = 'Perlu jaringan sekali untuk menyiapkan PIN.'
+        await lock()
       } else {
         offline.value = caught instanceof ApiError && caught.isOffline
         error.value = caught instanceof Error ? caught.message : 'Gagal memuat data.'

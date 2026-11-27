@@ -65,7 +65,7 @@ async function confirmDelete() {
         <h1>Riwayat</h1>
         <p>Semua catatan meter, terbaru di atas.</p>
       </div>
-      <v-btn color="primary" prepend-icon="mdi-plus" @click="addOpen = true">
+      <v-btn v-if="!store.offline" color="primary" prepend-icon="mdi-plus" @click="addOpen = true">
         Catat meter
       </v-btn>
     </header>
@@ -127,7 +127,7 @@ async function confirmDelete() {
         Mulai dengan mencatat angka meter hari ini. Catatan pertama menjadi dasar perkiraan.
       </p>
       <v-btn v-if="filterActive" variant="tonal" @click="clearFilter">Hapus filter</v-btn>
-      <v-btn v-else color="primary" prepend-icon="mdi-plus" @click="addOpen = true">
+      <v-btn v-if="!store.offline" color="primary" prepend-icon="mdi-plus" @click="addOpen = true">
         Catat meter
       </v-btn>
     </section>
