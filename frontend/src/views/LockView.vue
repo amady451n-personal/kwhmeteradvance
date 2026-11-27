@@ -132,9 +132,11 @@ const digits = ['1', '2', '3', '4', '5', '6', '7', '8', '9']
         </v-btn>
       </div>
 
-      <v-alert v-if="error" type="error" density="compact" class="form-alert">
-        {{ error }}
-      </v-alert>
+      <div class="lock-feedback" aria-live="polite">
+        <v-alert v-if="error" type="error" density="compact" class="form-alert">
+          {{ error }}
+        </v-alert>
+      </div>
     </div>
   </div>
 </template>
@@ -181,6 +183,11 @@ const digits = ['1', '2', '3', '4', '5', '6', '7', '8', '9']
   grid-template-columns: repeat(3, 1fr);
   gap: 12px;
   margin-top: 16px;
+}
+
+.lock-feedback {
+  min-height: 44px;
+  margin-top: 10px;
 }
 
 .lock-key {

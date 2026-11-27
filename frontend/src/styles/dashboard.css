@@ -261,6 +261,33 @@
   background: rgb(var(--v-theme-accent));
 }
 
+.usage-bar--active .usage-bar-fill {
+  opacity: 1;
+}
+
+.usage-tip {
+  position: absolute;
+  top: 4px;
+  z-index: 3;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  padding: 5px 8px;
+  border-radius: 6px;
+  background: rgb(var(--v-theme-on-surface));
+  color: rgb(var(--v-theme-surface));
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.18);
+  font-size: 10px;
+  line-height: 1.25;
+  white-space: nowrap;
+  pointer-events: none;
+  transform: translateX(-50%);
+}
+
+.usage-tip strong {
+  font-size: 11px;
+}
+
 .usage-average {
   position: absolute;
   right: 0;

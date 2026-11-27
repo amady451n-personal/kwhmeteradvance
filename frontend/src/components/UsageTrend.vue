@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue'
 import { formatKwh } from '../domain/format'
+import { nearestIndex } from '../domain/chart.ts'
 
 export interface TrendPoint {
   key: string
@@ -48,6 +49,14 @@ const activePoint = computed(() =>
   active.value == null ? null : (props.points[active.value] ?? null),
 )
 
+const xRatios = computed(() => props.points.map((_, index) => x(index) / W))
+
+function onPointer(event: PointerEvent) {
+  const box = (event.currentTarget as HTMLElement).getBoundingClientRect()
+  if (box.width <= 0) return
+  active.value = nearestIndex((event.clientX - box.left) / box.width, xRatios.value)
+}
+
 const tipStyle = computed(() => {
   if (active.value == null) return {}
   const xPct = Math.min(86, Math.max(14, (x(active.value) / W) * 100))
@@ -64,7 +73,12 @@ function toggle(index: number) {
 
 <template>
   <div class="trend-chart">
-    <div class="trend-plot" @mouseleave="active = null">
+    <div
+      class="trend-plot"
+      @pointermove="onPointer"
+      @pointerdown="onPointer"
+      @pointerleave="active = null"
+    >
       <svg
         :viewBox="`0 0 ${W} ${H}`"
         preserveAspectRatio="none"
@@ -82,8 +96,9 @@ function toggle(index: number) {
         :class="{ 'trend-dot--last': index === points.length - 1, 'trend-dot--active': index === active }"
         :style="{ left: `${(x(index) / W) * 100}%`, top: `${(y(point.kwh) / H) * 100}%` }"
         :title="`${point.label}: ${formatKwh(point.kwh)} ${unit}`"
-        aria-hidden="true"
-        @mouseenter="active = index"
+        :aria-label="`${point.label}: ${formatKwh(point.kwh)} ${unit}`"
+        tabindex="0"
+        @focus="active = index"
         @click="toggle(index)"
       />
 
