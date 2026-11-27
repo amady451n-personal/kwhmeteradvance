@@ -267,6 +267,20 @@
   gap: 6px;
 }
 
+.pending-readings {
+  margin-bottom: 12px;
+  padding: 16px 20px;
+}
+
+.pending-reading-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-top: 8px;
+}
+
 @media (max-width: 600px) {
   .token-row {
     flex-wrap: wrap;

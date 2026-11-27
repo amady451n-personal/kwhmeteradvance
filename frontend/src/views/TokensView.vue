@@ -94,6 +94,10 @@ async function cancel() {
   }
 }
 
+function groupCode(code: string): string {
+  return code.replace(/(.{4})(?=.)/g, '$1 ')
+}
+
 async function reveal(token: TokenRecord) {
   busy.value = token.id
   try {
@@ -167,6 +171,10 @@ async function reveal(token: TokenRecord) {
       class="token-list pending-list"
       aria-label="Token menunggu sinkron"
     >
+      <p class="token-note">
+        Akan dikirim otomatis saat tersambung.
+        <v-btn variant="text" size="small" @click="store.syncPending()">Sinkron sekarang</v-btn>
+      </p>
       <article
         v-for="entry in store.pendingTokens"
         :key="entry.id"
@@ -201,10 +209,9 @@ async function reveal(token: TokenRecord) {
             Konfirmasi
           </v-btn>
           <v-btn
-            v-if="entry.delivery === 'failed'"
             variant="text"
             size="small"
-            :aria-label="`Hapus token gagal ${formatKwh(entry.input.kwh)} kWh`"
+            :aria-label="`Hapus token tertunda ${formatKwh(entry.input.kwh)} kWh`"
             @click="store.discardPending(entry.id)"
           >
             Hapus
@@ -409,7 +416,7 @@ async function reveal(token: TokenRecord) {
           </div>
         </div>
         <v-card-text>
-          <p class="tabular reveal-code">{{ revealed?.code }}</p>
+          <p class="tabular reveal-code">{{ groupCode(revealed?.code ?? '') }}</p>
         </v-card-text>
         <v-card-actions class="dialog-actions">
           <v-btn variant="text" @click="revealed = null">Tutup</v-btn>

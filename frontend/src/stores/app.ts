@@ -3,6 +3,7 @@ import { defineStore } from 'pinia'
 import { apiClient, ApiError } from '../api'
 import { summaryFromApi } from '../api/mappers'
 import { toDrainOutcome } from '../api/outcome.ts'
+import { withTimeout } from '../api/timeout.ts'
 import {
   clearOffline,
   hasPinTrace,
@@ -13,14 +14,14 @@ import {
 } from '../api/offline.ts'
 import {
   drainQueue,
-  enqueueReading,
   enqueueToken,
   getPending,
+  getPendingReadings,
   queueSize,
   confirmPending as confirmQueuedToken,
   removePending,
 } from '../api/queue'
-import type { DrainOutcome, QueuedToken } from '../api/queue'
+import type { DrainOutcome, QueuedReading, QueuedToken } from '../api/queue'
 import type { ReadingInput, Settings as ApiSettings, SettingsPatch, TokenCreate } from '../api'
 import { DEFAULT_DENOMINATIONS, readingViews, summarize } from '../domain/energy'
 import { formatDate, formatRelative } from '../domain/format'
@@ -99,7 +100,8 @@ export const useAppStore = defineStore('app', () => {
   const error = ref('')
   const queuedCount = ref(queueSize())
   const pendingTokens = ref<QueuedToken[]>([])
-  const pendingCount = computed(() => pendingTokens.value.length)
+  const pendingReadings = ref<QueuedReading[]>([])
+  const pendingCount = computed(() => pendingTokens.value.length + pendingReadings.value.length)
   const session = ref<{ authenticated: boolean; pinSet: boolean } | null>(null)
   const toast = reactive({ open: false, message: '' })
 
@@ -186,38 +188,61 @@ export const useAppStore = defineStore('app', () => {
       if (caught instanceof ApiError && caught.status === 401) void lock()
       return toDrainOutcome(caught)
     }
+    const stale: DrainOutcome = {
+      ok: false,
+      retryable: true,
+      message: 'Server tidak merespons.',
+    }
     const remaining = await drainQueue(
-      async (id, input) => {
-        try {
-          await client.upsertReading(id, input)
-          return { ok: true }
-        } catch (caught) {
-          return asOutcome(caught)
-        }
-      },
-      async (id, input) => {
-        try {
-          await client.createToken({ ...input, id })
-          return { ok: true }
-        } catch (caught) {
-          return asOutcome(caught)
-        }
-      },
+      (id, input) =>
+        withTimeout(
+          (async (): Promise<DrainOutcome> => {
+            try {
+              await client.upsertReading(id, input)
+              return { ok: true }
+            } catch (caught) {
+              return asOutcome(caught)
+            }
+          })(),
+          4000,
+          () => stale,
+        ),
+      (id, input) =>
+        withTimeout(
+          (async (): Promise<DrainOutcome> => {
+            try {
+              await client.createToken({ ...input, id })
+              return { ok: true }
+            } catch (caught) {
+              return asOutcome(caught)
+            }
+          })(),
+          4000,
+          () => stale,
+        ),
     ).catch(() => queueSize())
     queuedCount.value = remaining
     pendingTokens.value = await getPending()
+    pendingReadings.value = await getPendingReadings()
     if (remaining !== before) persistSnapshot()
     if (remaining === 0) void init(true)
   }
 
   async function discardPending(id: string) {
-    queuedCount.value = await removePending(id)
+    queuedCount.value = await removePending(id, 'token')
     pendingTokens.value = await getPending()
+    pendingReadings.value = await getPendingReadings()
+  }
+
+  async function discardReading(id: string) {
+    queuedCount.value = await removePending(id, 'reading')
+    pendingReadings.value = await getPendingReadings()
   }
 
   async function confirmPending(id: string) {
     queuedCount.value = await confirmQueuedToken(id)
     pendingTokens.value = await getPending()
+    pendingReadings.value = await getPendingReadings()
     await syncPending()
   }
 
@@ -236,6 +261,7 @@ export const useAppStore = defineStore('app', () => {
     loading.value = false
     ready.value = true
     pendingTokens.value = await getPending()
+    pendingReadings.value = await getPendingReadings()
     queuedCount.value = queueSize()
     void init(true)
     return true
@@ -315,48 +341,34 @@ export const useAppStore = defineStore('app', () => {
     }
   }
 
-  function localReading(id: string, input: NewReading): Reading {
-    const now = new Date().toISOString()
-    const existing = readings.value.find((row) => row.id === id)
-    return {
-      id,
-      meterName: 'main',
-      reading: input.reading,
-      timestamp: input.timestamp,
-      notes: input.notes ?? null,
-      rechargeAmount: input.rechargeAmount ?? null,
-      cost: input.cost ?? null,
-      tokenId: null,
-      source: 'manual',
-      locked: existing?.locked ?? false,
-      oldId: null,
-      createdAt: existing?.createdAt ?? now,
-      updatedAt: now,
-    }
+  function isOfflineNow(): boolean {
+    return offline.value || (typeof navigator !== 'undefined' && !navigator.onLine)
   }
 
-  async function keepQueued(id: string, input: NewReading) {
-    queuedCount.value = await enqueueReading(id, payload(input, id))
+  function rejectReadingOffline(): never {
+    const message = 'Input catatan meter tidak tersedia saat offline.'
+    error.value = message
+    notify(message)
+    throw new Error(message)
+  }
+
+  async function queueTokenOffline(id: string, body: TokenCreate) {
+    queuedCount.value = await enqueueToken(id, body)
+    pendingTokens.value = await getPending()
+    pendingReadings.value = await getPendingReadings()
     offline.value = true
-    const next = localReading(id, input)
-    const index = readings.value.findIndex((row) => row.id === id)
-    if (index >= 0) readings.value[index] = next
-    else readings.value.push(next)
     serverSummary.value = null
-    notify('Tidak ada koneksi. Catatan menunggu antrean.')
+    notify('Token menunggu antrean.')
     persistSnapshot()
   }
 
   async function addReading(input: NewReading) {
+    if (isOfflineNow()) rejectReadingOffline()
     const id = crypto.randomUUID()
     try {
       const created = await client.upsertReading(id, payload(input, id))
       readings.value.push(created)
     } catch (caught) {
-      if (caught instanceof ApiError && caught.isOffline) {
-        await keepQueued(id, input)
-        return
-      }
       return fail(caught)
     }
     serverSummary.value = null
@@ -366,15 +378,12 @@ export const useAppStore = defineStore('app', () => {
   }
 
   async function updateReading(id: string, input: NewReading) {
+    if (isOfflineNow()) rejectReadingOffline()
     try {
       const updated = await client.upsertReading(id, payload(input, id))
       const index = readings.value.findIndex((row) => row.id === id)
       if (index >= 0) readings.value[index] = updated
     } catch (caught) {
-      if (caught instanceof ApiError && caught.isOffline) {
-        await keepQueued(id, input)
-        return
-      }
       return fail(caught)
     }
     serverSummary.value = null
@@ -399,19 +408,26 @@ export const useAppStore = defineStore('app', () => {
   }
 
   async function addToken(input: NewToken) {
-    const body: TokenCreate = { ...input }
+    const id = crypto.randomUUID()
+    const body: TokenCreate = { ...input, id }
+    if (isOfflineNow()) {
+      await queueTokenOffline(id, body)
+      return
+    }
     try {
-      const created = await client.createToken(body)
-      tokens.value.unshift(created)
+      const outcome = await withTimeout<{ value: TokenRecord } | { timedOut: true }>(
+        client.createToken(body).then((value) => ({ value })),
+        4000,
+        () => ({ timedOut: true as const }),
+      )
+      if (!('value' in outcome)) {
+        await queueTokenOffline(id, body)
+        return
+      }
+      tokens.value.unshift(outcome.value)
     } catch (caught) {
       if (caught instanceof ApiError && caught.isOffline) {
-        const id = crypto.randomUUID()
-        queuedCount.value = await enqueueToken(id, body)
-        pendingTokens.value = await getPending()
-        offline.value = true
-        serverSummary.value = null
-        notify('Token menunggu antrean.')
-        persistSnapshot()
+        await queueTokenOffline(id, body)
         return
       }
       return fail(caught)
@@ -532,10 +548,12 @@ export const useAppStore = defineStore('app', () => {
     offline,
     queuedCount,
     pendingTokens,
+    pendingReadings,
     pendingCount,
     syncPending,
     unlockOffline,
     discardPending,
+    discardReading,
     confirmPending,
     session,
     login,

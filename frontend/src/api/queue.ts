@@ -180,9 +180,17 @@ export function getPending(): Promise<QueuedToken[]> {
   )
 }
 
-export function removePending(id: string): Promise<number> {
+export function getPendingReadings(): Promise<QueuedReading[]> {
+  return serialize(async () =>
+    (await loadInternal()).filter((item): item is QueuedReading => item.kind === 'reading'),
+  )
+}
+
+export function removePending(id: string, kind?: Operation['kind']): Promise<number> {
   return serialize(async () => {
-    const items = (await loadInternal()).filter((item) => !(item.kind === 'token' && item.id === id))
+    const items = (await loadInternal()).filter(
+      (item) => !(item.id === id && (!kind || item.kind === kind)),
+    )
     await saveInternal(items)
     return items.length
   })

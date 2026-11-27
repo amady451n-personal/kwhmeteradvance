@@ -139,3 +139,12 @@ test('concurrent enqueues both survive', async () => {
   ])
   assert.deepEqual((await q.getPending()).map((e) => e.id).sort(), ['a', 'b'])
 })
+
+test('pending readings are visible and removable without touching tokens', async () => {
+  reset()
+  await q.enqueueReading('r1', { id: 'r1', reading: 90, timestamp: '2026-11-27T08:00:00+07:00' } as never)
+  await q.enqueueToken('t1', { code: 'A', kwh: 1, cost: 1 } as never)
+  assert.equal((await q.getPendingReadings()).length, 1)
+  assert.equal(await q.removePending('r1', 'reading'), 1)
+  assert.equal((await q.getPending()).length, 1)
+})

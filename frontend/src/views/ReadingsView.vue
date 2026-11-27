@@ -74,6 +74,27 @@ async function confirmDelete() {
       {{ store.error }}
     </v-alert>
 
+    <section
+      v-if="store.pendingReadings.length"
+      class="surface-card pending-readings"
+      aria-label="Catatan meter tertunda"
+    >
+      <p>Catatan meter tertunda dari versi sebelumnya. Input meter sedang dimatikan; hapus catatan ini untuk membersihkan antrean.</p>
+      <div v-for="item in store.pendingReadings" :key="item.id" class="pending-reading-row">
+        <span class="tabular">
+          {{ formatDateTime(item.input.timestamp) }} · {{ formatKwh(item.input.reading ?? 0) }} kWh
+        </span>
+        <v-btn
+          variant="text"
+          size="small"
+          :aria-label="`Hapus catatan tertunda ${formatKwh(item.input.reading ?? 0)} kWh`"
+          @click="store.discardReading(item.id)"
+        >
+          Hapus
+        </v-btn>
+      </div>
+    </section>
+
     <section class="surface-card filter-card" aria-label="Filter tanggal">
       <div class="filter-fields">
         <v-text-field
