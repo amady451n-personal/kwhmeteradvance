@@ -6,6 +6,7 @@ import type { ImportPreview } from '../api'
 import { formatKwh, formatRupiah } from '../domain/format'
 
 const store = useAppStore()
+const appVersion = (import.meta.env.VITE_APP_VERSION as string | undefined) || 'dev'
 const denomInput = ref('')
 const denomError = ref('')
 const importFile = ref<File[]>([])
@@ -367,6 +368,13 @@ function removeDenomination(value: number) {
         <div>
           <strong>{{ store.sourceLabel }}</strong>
           <p>Perubahan tersimpan sesuai mode koneksi yang aktif.</p>
+        </div>
+      </div>
+
+      <div class="info-row">
+        <div>
+          <strong>Versi aplikasi</strong>
+          <p class="tabular">{{ appVersion }}</p>
         </div>
       </div>
 

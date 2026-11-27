@@ -179,7 +179,7 @@ go run ./cmd/meteran          # METERAN_ADDR=:8080 METERAN_DB=/tmp/meteran.db
 bash ../scripts/check-contract.sh
 ```
 
-Image arm64 (dibangun di amd64, tanpa qemu untuk stage build):
+Image arm64 (dibangun di amd64, tanpa qemu untuk stage build). `release.sh` menu 1 mengirim `--build-arg VERSION=<WIB>-<commit>`; versi ini dipakai Go (`-X main.version`) dan ditampilkan di **Pengaturan → Versi aplikasi**:
 
 ```bash
 docker buildx build --platform linux/arm64 -t meteranadvanced:latest --load -f backend/Dockerfile .

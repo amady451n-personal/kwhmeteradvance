@@ -8,7 +8,8 @@ RUN npm ci
 COPY frontend/ ./
 # Production SPA must talk to the Go API, not the preview client.
 ARG VITE_API_MODE=server
-RUN VITE_API_MODE=$VITE_API_MODE npm run build
+ARG VERSION=dev
+RUN VITE_API_MODE=$VITE_API_MODE VITE_APP_VERSION=$VERSION npm run build
 
 # Stage 2: cross-compile the single static arm64 binary with the SPA embedded.
 FROM --platform=$BUILDPLATFORM golang:1.26-alpine AS build

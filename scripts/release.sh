@@ -109,13 +109,15 @@ load_config() {
 
 build_image() {
   local start=$SECONDS
-  say "build arm64 image $IMAGE"
+  local version
+  version="$(TZ=Asia/Jakarta date +%Y%m%d-%H%M)-$(git rev-parse --short HEAD 2>/dev/null || echo dev)"
+  say "build arm64 image $IMAGE ($version)"
   note "tahap 1/2: npm build + go build (biasanya 1-3 menit, output di bawah)"
   if [ "$(uname -m)" = "aarch64" ]; then
     # already on arm64: native build, no buildx/qemu needed
-    run docker build -t "$IMAGE" -f backend/Dockerfile .
+    run docker build --build-arg VERSION="$version" -t "$IMAGE" -f backend/Dockerfile .
   else
-    run docker buildx build --platform linux/arm64 -t "$IMAGE" --load -f backend/Dockerfile .
+    run docker buildx build --build-arg VERSION="$version" --platform linux/arm64 -t "$IMAGE" --load -f backend/Dockerfile .
   fi
   note "build selesai dalam $((SECONDS - start))s"
 
