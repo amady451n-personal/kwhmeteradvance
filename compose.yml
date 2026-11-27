@@ -3,6 +3,10 @@ services:
     image: meteranadvanced:latest
     pull_policy: never
     restart: unless-stopped
+    # Hard ceiling so a request storm can never take the whole STB down.
+    cpus: "0.5"
+    mem_limit: 96m
+    mem_reservation: 16m
     # Starts as root only to chown /data, then drops to these ids (see
     # backend/docker-entrypoint.sh) so bind-mounted files stay owned by the host user.
     ports:
@@ -16,6 +20,9 @@ services:
       METERAN_VAPID_PRIVATE: ${METERAN_VAPID_PRIVATE:-}
       METERAN_UID: ${METERAN_UID:-1000}
       METERAN_GID: ${METERAN_GID:-1000}
+      GOMAXPROCS: ${GOMAXPROCS:-1}
+      GOGC: ${GOGC:-50}
+      GOMEMLIMIT: ${GOMEMLIMIT:-16MiB}
     healthcheck:
       test: ["CMD", "curl", "-sf", "http://localhost:8080/api/health"]
       interval: 30s

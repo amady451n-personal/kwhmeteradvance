@@ -5,6 +5,13 @@ const SNAPSHOT_KEY = 'meteran.snapshot.v1'
 const encoder = new TextEncoder()
 const decoder = new TextDecoder()
 
+// crypto.subtle only exists in a secure context (HTTPS / localhost). On a
+// plain HTTP LAN address the server session still works, but offline unlock
+// cannot be prepared — fail closed instead of throwing "importKey undefined".
+export function canUseCrypto(): boolean {
+  return typeof crypto !== 'undefined' && !!crypto.subtle
+}
+
 function toBase64(bytes: Uint8Array): string {
   let raw = ''
   for (const byte of bytes) raw += String.fromCharCode(byte)
@@ -14,6 +21,10 @@ function toBase64(bytes: Uint8Array): string {
 function fromBase64(value: string): Uint8Array {
   const raw = atob(value)
   return Uint8Array.from(raw, (char) => char.charCodeAt(0))
+}
+
+function requireCrypto(): void {
+  if (!canUseCrypto()) throw new Error('Mode offline memerlukan HTTPS.')
 }
 
 function equal(a: Uint8Array, b: Uint8Array): boolean {
@@ -57,6 +68,7 @@ export function hasPinTrace(): boolean {
 }
 
 export async function rememberPin(pin: string): Promise<void> {
+  if (!canUseCrypto()) return
   const salt = crypto.getRandomValues(new Uint8Array(16))
   const verifier = await derive(pin, salt)
   const value: PinTrace = { v: 1, salt: toBase64(salt), verifier: toBase64(verifier) }
@@ -64,6 +76,7 @@ export async function rememberPin(pin: string): Promise<void> {
 }
 
 export async function verifyPin(pin: string): Promise<boolean> {
+  if (!canUseCrypto()) return false
   const saved = trace()
   if (!saved) return false
   try {
@@ -75,6 +88,7 @@ export async function verifyPin(pin: string): Promise<boolean> {
 }
 
 export async function ensureDataKey(): Promise<CryptoKey> {
+  requireCrypto()
   let raw = localStorage.getItem(DATA_KEY)
   if (!raw) {
     raw = toBase64(crypto.getRandomValues(new Uint8Array(32)))
@@ -110,6 +124,7 @@ export async function openText(sealed: string): Promise<string> {
 }
 
 export async function saveSnapshot(data: unknown): Promise<void> {
+  requireCrypto()
   localStorage.setItem(SNAPSHOT_KEY, await sealText(JSON.stringify(data)))
 }
 

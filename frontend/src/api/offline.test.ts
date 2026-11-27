@@ -6,6 +6,7 @@ class Memory {
   getItem(k: string) { return this.m.get(k) ?? null }
   setItem(k: string, v: string) { this.m.set(k, v) }
   removeItem(k: string) { this.m.delete(k) }
+  clear() { this.m.clear() }
 }
 Object.defineProperty(globalThis, 'localStorage', { value: new Memory(), configurable: true })
 
@@ -47,4 +48,14 @@ test('broken snapshot returns null without deleting trace', async () => {
   localStorage.setItem('meteran.snapshot.v1', '{rusak')
   assert.equal(await o.loadSnapshot(), null)
   assert.equal(o.hasPinTrace(), true)
+})
+
+test('PIN trace is skipped without Web Crypto (plain HTTP)', async () => {
+  const saved = globalThis.crypto
+  Object.defineProperty(globalThis, 'crypto', { value: {}, configurable: true })
+  localStorage.clear()
+  await o.rememberPin('123456')
+  assert.equal(o.hasPinTrace(), false)
+  assert.equal(await o.verifyPin('123456'), false)
+  Object.defineProperty(globalThis, 'crypto', { value: saved, configurable: true })
 })

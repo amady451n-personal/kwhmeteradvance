@@ -5,6 +5,7 @@ import { summaryFromApi } from '../api/mappers'
 import { toDrainOutcome } from '../api/outcome.ts'
 import { withTimeout } from '../api/timeout.ts'
 import {
+  canUseCrypto,
   clearOffline,
   hasPinTrace,
   loadSnapshot,
@@ -173,7 +174,7 @@ export const useAppStore = defineStore('app', () => {
   }
 
   function persistSnapshot() {
-    if (client.mode !== 'server') return
+    if (client.mode !== 'server' || !canUseCrypto()) return
     void saveSnapshot({
       readings: [...readings.value],
       tokens: [...tokens.value],
@@ -424,6 +425,11 @@ export const useAppStore = defineStore('app', () => {
     const id = crypto.randomUUID()
     const body: TokenCreate = { ...input, id }
     if (isOfflineNow()) {
+      if (!canUseCrypto()) {
+        error.value = 'Mode offline memerlukan HTTPS. Buka lewat alamat HTTPS.'
+        notify(error.value)
+        return
+      }
       await queueTokenOffline(id, body)
       return
     }

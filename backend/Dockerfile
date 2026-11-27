@@ -33,7 +33,10 @@ COPY --from=build /meteran /meteran
 COPY backend/docker-entrypoint.sh /entrypoint.sh
 RUN chmod +x /entrypoint.sh
 ENV METERAN_DB=/data/meteran.db \
-    TZ=Asia/Jakarta
+    TZ=Asia/Jakarta \
+    GOMAXPROCS=1 \
+    GOGC=50 \
+    GOMEMLIMIT=16MiB
 EXPOSE 8080
 HEALTHCHECK --interval=30s --timeout=3s --start-period=5s \
   CMD curl -sf http://localhost:8080/api/health >/dev/null || exit 1
