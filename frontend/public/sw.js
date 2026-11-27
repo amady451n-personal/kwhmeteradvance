@@ -1,8 +1,11 @@
-const CACHE = 'meteran-v3'
+const CACHE = 'meteran-v4'
 const SHELL = ['/', '/index.html', '/manifest.webmanifest', '/icon.svg']
 
 self.addEventListener('install', (event) => {
-  event.waitUntil(caches.open(CACHE).then((cache) => cache.addAll(SHELL)))
+  // A flaky proxy must not block SW installation: keep whatever we can cache.
+  event.waitUntil(
+    caches.open(CACHE).then((cache) => Promise.allSettled(SHELL.map((url) => cache.add(url)))),
+  )
   self.skipWaiting()
 })
 
@@ -55,12 +58,21 @@ self.addEventListener('fetch', (event) => {
   if (request.mode === 'navigate') {
     event.respondWith(
       (async () => {
-        const cached = (await caches.match(request)) || (await caches.match('/index.html'))
-        const refresh = fetch(request)
+        const cached = (await caches.match('/index.html')) || (await caches.match(request))
+        const refresh = fetch(request, { cache: 'reload' })
           .then(async (response) => {
-            if (!response.ok || response.status === 304) return cached || response
-            const cache = await caches.open(CACHE)
-            await cache.put('/index.html', response.clone())
+            if (!response.ok) return cached || response
+            const html = await response.clone().text()
+            const assets = [...html.matchAll(/(?:src|href)="(\/assets\/[^"]+)"/g)].map(
+              (match) => match[1],
+            )
+            event.waitUntil(
+              (async () => {
+                const cache = await caches.open(CACHE)
+                await cache.put('/index.html', response.clone())
+                await Promise.allSettled(assets.map((url) => cache.add(url)))
+              })(),
+            )
             return response
           })
           .catch(() => null)
