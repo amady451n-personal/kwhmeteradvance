@@ -1,4 +1,4 @@
-const CACHE = 'meteran-v5'
+const CACHE = 'meteran-v6'
 const SHELL = ['/', '/index.html', '/manifest.webmanifest', '/icon.svg']
 const OFFLINE_HTML = `<!doctype html><html lang="id"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>meteran</title><body style="font-family:system-ui;background:#F6F3EB;color:#15201D;display:grid;place-items:center;min-height:100vh;margin:0"><main style="max-width:320px;text-align:center"><h1 style="color:#0D5C53;font-size:20px;letter-spacing:.14em">KWH</h1><p>Belum bisa memuat aplikasi. Periksa koneksi, lalu coba lagi.</p><button onclick="location.reload()" style="background:#0D5C53;color:#fff;border:0;border-radius:8px;padding:12px 20px;font-size:14px">Coba lagi</button></main></body></html>`
 
@@ -87,7 +87,18 @@ self.addEventListener('fetch', (event) => {
         ])
         if (quick) return quick
         if (cached) {
-          event.waitUntil(refresh)
+          event.waitUntil(
+            refresh.then(async (fresh) => {
+              if (!fresh) return
+              const [oldText, newText] = await Promise.all([
+                cached.clone().text(),
+                fresh.clone().text(),
+              ])
+              if (oldText === newText) return
+              const clients = await self.clients.matchAll({ type: 'window' })
+              for (const client of clients) client.postMessage({ type: 'reload' })
+            }),
+          )
           return cached
         }
         return (

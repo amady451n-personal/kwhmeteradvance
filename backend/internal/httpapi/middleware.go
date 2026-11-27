@@ -4,6 +4,7 @@ import (
 	"log"
 	"net"
 	"net/http"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -121,7 +122,9 @@ func (rl *rateLimiter) wrap(next http.Handler) http.Handler {
 			}
 		}
 		if !rl.allow(key, time.Now()) {
+			log.Printf("rate limit: ip=%s path=%s", key, r.URL.Path)
 			w.Header().Set("Retry-After", "60")
+			w.Header().Set("X-RateLimit-Limit", strconv.Itoa(rl.limit))
 			Fail(w, http.StatusTooManyRequests, CodeRateLimited, "Terlalu banyak permintaan. Coba lagi nanti.")
 			return
 		}
