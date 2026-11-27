@@ -6,6 +6,7 @@
   "scripts": {
     "dev": "vite",
     "build": "vue-tsc --noEmit && vite build",
+    "test": "node --test",
     "preview": "vite preview --host 0.0.0.0",
     "api:types": "openapi-typescript /docs/api/openapi.yaml -o src/api/schema.d.ts && chown ${HOST_UID:-1000}:${HOST_GID:-1000} src/api/schema.d.ts"
   },
