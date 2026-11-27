@@ -2,6 +2,8 @@ package httpapi
 
 import (
 	"net/http"
+	"os"
+	"strconv"
 	"sync"
 	"time"
 
@@ -85,7 +87,11 @@ func (s *Server) Handler() http.Handler {
 	}
 
 	// A single noisy client (or scanner) must not fill the log and starve the STB.
-	limiter := newRateLimiter(600, time.Minute)
+	limit := 600
+	if n, err := strconv.Atoi(os.Getenv("METERAN_RATE_LIMIT")); err == nil && n >= 60 {
+		limit = n
+	}
+	limiter := newRateLimiter(limit, time.Minute)
 	return recoverer(logger(limiter.wrap(mux)))
 }
 

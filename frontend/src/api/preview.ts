@@ -413,7 +413,7 @@ function writeToken(id: string, input: TokenUpsert): Token {
         toMs: Date.parse(query.to),
         group: query.group,
         price: priceOf(),
-      }).map(usageBucketFromView)
+      }).map(usageBucketFromView).reverse()
       return {
         data: buckets,
         meta: {

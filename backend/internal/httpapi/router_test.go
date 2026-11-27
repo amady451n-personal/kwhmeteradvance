@@ -253,6 +253,18 @@ func TestReadingSummaryUsageAndSettings(t *testing.T) {
 	if rec.Code != 200 {
 		t.Fatalf("usage: %d %s", rec.Code, rec.Body.String())
 	}
+	var env struct {
+		Data []struct {
+			Key  string  `json:"key"`
+			Kwh  float64 `json:"kwh"`
+		} `json:"data"`
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &env); err != nil {
+		t.Fatal(err)
+	}
+	if len(env.Data) < 2 || env.Data[0].Key <= env.Data[len(env.Data)-1].Key {
+		t.Fatalf("usage must be newest first, got %+v", env.Data)
+	}
 
 	rec = do(t, h, "PATCH", "/api/settings", map[string]any{"buffer": 25, "denominations": []int{50000}}, cookie)
 	var settings store.Settings

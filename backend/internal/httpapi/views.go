@@ -101,6 +101,11 @@ func (s *Server) usage(w http.ResponseWriter, r *http.Request) {
 		FromMs: fromMs, ToMs: domain.ToMs(to), Group: group, Price: domain.EffectivePrice(readings),
 	})
 
+	// Newest period first: the report shows the latest days even on a long range.
+	for i, j := 0, len(buckets)-1; i < j; i, j = i+1, j-1 {
+		buckets[i], buckets[j] = buckets[j], buckets[i]
+	}
+
 	totalKwh := 0.0
 	var totalCost int64
 	for _, b := range buckets {

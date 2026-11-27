@@ -269,6 +269,8 @@ paths:
       description: |
         Hari tanpa pembacaan sendiri ditandai estimasi (FR-22). Minggu
         dihitung Senin sampai Minggu, bulan mengikuti kalender (FR-23).
+        Periode dikembalikan terbaru lebih dulu, sehingga halaman pertama
+        selalu berisi tanggal terakhir pada rentang.
       parameters:
         - $ref: '#/components/parameters/FromDate'
         - $ref: '#/components/parameters/ToDate'

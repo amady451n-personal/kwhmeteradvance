@@ -48,8 +48,8 @@ async function loadBuckets() {
       to: to.value || todayKey,
       group: group.value,
     })
-    // newest period first; the API returns ascending buckets
-    buckets.value = [...page.data].reverse()
+    // API already returns newest period first.
+    buckets.value = page.data
   } catch (caught) {
     buckets.value = []
     bucketsError.value = caught instanceof Error ? caught.message : 'Gagal memuat pemakaian.'
