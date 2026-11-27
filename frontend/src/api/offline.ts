@@ -66,8 +66,12 @@ export async function rememberPin(pin: string): Promise<void> {
 export async function verifyPin(pin: string): Promise<boolean> {
   const saved = trace()
   if (!saved) return false
-  const candidate = await derive(pin, fromBase64(saved.salt))
-  return equal(candidate, fromBase64(saved.verifier))
+  try {
+    const candidate = await derive(pin, fromBase64(saved.salt))
+    return equal(candidate, fromBase64(saved.verifier))
+  } catch {
+    return false
+  }
 }
 
 export async function ensureDataKey(): Promise<CryptoKey> {

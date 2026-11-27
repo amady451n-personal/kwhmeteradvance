@@ -38,6 +38,11 @@ test('seal/open text and snapshot round trip', async () => {
   assert.deepEqual(await o.loadSnapshot(), { readings: [1, 2] })
 })
 
+test('malformed PIN trace fails closed', async () => {
+  localStorage.setItem('meteran.pin.v1', '{"v":1,"salt":"!!","verifier":"??"}')
+  assert.equal(await o.verifyPin('123456'), false)
+})
+
 test('broken snapshot returns null without deleting trace', async () => {
   localStorage.setItem('meteran.snapshot.v1', '{rusak')
   assert.equal(await o.loadSnapshot(), null)

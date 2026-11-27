@@ -92,3 +92,50 @@ test('drain replays readings before tokens', async () => {
   )
   assert.deepEqual(seen, ['reading:r', 'token:tok'])
 })
+
+test('confirmation_required keeps entry pending for user confirmation', async () => {
+  reset()
+  await q.enqueueToken('need', { code: 'Y', kwh: 1, cost: 1 } as never)
+  await q.drainQueue(
+    async () => ({ ok: true as const }),
+    async () => ({ ok: false as const, retryable: false, message: 'Perlu konfirmasi.', needsConfirm: ['denomination_out_of_tolerance'] }),
+  )
+  let [entry] = await q.getPending()
+  assert.equal(entry.delivery, 'needs_confirm')
+  assert.deepEqual(entry.confirm, ['denomination_out_of_tolerance'])
+
+  const seen = [] as string[]
+  await q.drainQueue(
+    async () => ({ ok: true as const }),
+    async (id) => { seen.push(id); return { ok: true as const } },
+  )
+  assert.deepEqual(seen, [])
+
+  await q.confirmPending('need')
+  let confirmed = 0
+  await q.drainQueue(
+    async () => ({ ok: true as const }),
+    async () => { confirmed++; return { ok: true as const } },
+  )
+  assert.equal(confirmed, 1)
+  assert.equal(q.queueSize(), 0)
+})
+
+test('corrupt queue entry is skipped without poisoning the rest', async () => {
+  reset()
+  await q.enqueueToken('good', { code: 'G', kwh: 1, cost: 1 } as never)
+  const raw = JSON.parse(localStorage.getItem('meteran.queue.v2')!)
+  raw.splice(0, 0, { kind: 'token', id: 'bad', queuedAt: 0, sealed: '!!!' })
+  localStorage.setItem('meteran.queue.v2', JSON.stringify(raw))
+  assert.equal((await q.getPending()).some((e) => e.id === 'bad'), false)
+  assert.equal((await q.getPending()).some((e) => e.id === 'good'), true)
+})
+
+test('concurrent enqueues both survive', async () => {
+  reset()
+  await Promise.all([
+    q.enqueueToken('a', { code: 'A', kwh: 1, cost: 1 } as never),
+    q.enqueueToken('b', { code: 'B', kwh: 2, cost: 2 } as never),
+  ])
+  assert.deepEqual((await q.getPending()).map((e) => e.id).sort(), ['a', 'b'])
+})

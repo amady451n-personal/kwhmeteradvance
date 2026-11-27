@@ -181,15 +181,25 @@ async function reveal(token: TokenRecord) {
             <span>{{ formatRupiah(entry.input.cost) }}</span>
             <span>{{ entry.input.type === 'bulk' ? 'Isi besar' : 'Tambahan' }}</span>
           </div>
+          <p v-if="entry.error" class="token-note">{{ entry.error }}</p>
         </div>
         <div class="token-side">
           <v-chip
-            :color="entry.delivery === 'failed' ? 'error' : 'warning'"
+            :color="entry.delivery === 'failed' ? 'error' : entry.delivery === 'needs_confirm' ? 'warning' : 'secondary'"
             variant="tonal"
             size="small"
           >
-            {{ entry.delivery === 'failed' ? `Gagal: ${entry.error ?? ''}` : 'Tertunda' }}
+            {{ entry.delivery === 'failed' ? 'Gagal' : entry.delivery === 'needs_confirm' ? 'Perlu konfirmasi' : 'Tertunda' }}
           </v-chip>
+          <v-btn
+            v-if="entry.delivery === 'needs_confirm'"
+            variant="text"
+            size="small"
+            :aria-label="`Konfirmasi token ${formatKwh(entry.input.kwh)} kWh`"
+            @click="store.confirmPending(entry.id)"
+          >
+            Konfirmasi
+          </v-btn>
           <v-btn
             v-if="entry.delivery === 'failed'"
             variant="text"

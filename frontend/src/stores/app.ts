@@ -2,6 +2,7 @@ import { computed, reactive, ref } from 'vue'
 import { defineStore } from 'pinia'
 import { apiClient, ApiError } from '../api'
 import { summaryFromApi } from '../api/mappers'
+import { toDrainOutcome } from '../api/outcome.ts'
 import {
   clearOffline,
   hasPinTrace,
@@ -16,6 +17,7 @@ import {
   enqueueToken,
   getPending,
   queueSize,
+  confirmPending as confirmQueuedToken,
   removePending,
 } from '../api/queue'
 import type { DrainOutcome, QueuedToken } from '../api/queue'
@@ -178,13 +180,11 @@ export const useAppStore = defineStore('app', () => {
   }
 
   async function syncPending() {
-    if (client.mode !== 'server') return
+    if (client.mode !== 'server' || !session.value?.authenticated) return
     const before = queueSize()
     const asOutcome = (caught: unknown): DrainOutcome => {
-      if (caught instanceof ApiError && !caught.isOffline && caught.status < 500) {
-        return { ok: false, retryable: false, message: caught.message }
-      }
-      return { ok: false, retryable: true, message: caught instanceof Error ? caught.message : 'Gagal' }
+      if (caught instanceof ApiError && caught.status === 401) void lock()
+      return toDrainOutcome(caught)
     }
     const remaining = await drainQueue(
       async (id, input) => {
@@ -207,12 +207,18 @@ export const useAppStore = defineStore('app', () => {
     queuedCount.value = remaining
     pendingTokens.value = await getPending()
     if (remaining !== before) persistSnapshot()
-    if (remaining === 0 && offline.value) void init(true)
+    if (remaining === 0) void init(true)
   }
 
   async function discardPending(id: string) {
     queuedCount.value = await removePending(id)
     pendingTokens.value = await getPending()
+  }
+
+  async function confirmPending(id: string) {
+    queuedCount.value = await confirmQueuedToken(id)
+    pendingTokens.value = await getPending()
+    await syncPending()
   }
 
   async function unlockOffline(pin: string): Promise<boolean> {
@@ -264,7 +270,7 @@ export const useAppStore = defineStore('app', () => {
       await syncPending()
     } catch (caught) {
       if (caught instanceof ApiError && caught.status === 401) {
-        if (!silent) await lock()
+        await lock()
       } else if (caught instanceof ApiError && caught.isOffline && hasPinTrace()) {
         offline.value = true
         if (!silent) await lock()
@@ -334,6 +340,7 @@ export const useAppStore = defineStore('app', () => {
     else readings.value.push(next)
     serverSummary.value = null
     notify('Tidak ada koneksi. Catatan menunggu antrean.')
+    persistSnapshot()
   }
 
   async function addReading(input: NewReading) {
@@ -400,6 +407,7 @@ export const useAppStore = defineStore('app', () => {
         offline.value = true
         serverSummary.value = null
         notify('Token menunggu antrean.')
+        persistSnapshot()
         return
       }
       return fail(caught)
@@ -415,6 +423,7 @@ export const useAppStore = defineStore('app', () => {
       const updated = await client.patchToken(id, patch)
       const index = tokens.value.findIndex((row) => row.id === id)
       if (index >= 0) tokens.value[index] = updated
+      persistSnapshot()
       return updated
     } catch (caught) {
       return fail(caught)
@@ -432,6 +441,7 @@ export const useAppStore = defineStore('app', () => {
     }
     serverSummary.value = null
     notify('Token ditandai terpakai.')
+    persistSnapshot()
     return refreshSummary().catch(() => {})
   }
 
@@ -449,6 +459,7 @@ export const useAppStore = defineStore('app', () => {
     }
     serverSummary.value = null
     notify('Token dikembalikan ke belum dipakai.')
+    persistSnapshot()
     return refreshSummary().catch(() => {})
   }
 
@@ -461,6 +472,7 @@ export const useAppStore = defineStore('app', () => {
     }
     serverSummary.value = null
     notify('Token dihapus.')
+    persistSnapshot()
     return refreshSummary().catch(() => {})
   }
 
@@ -520,6 +532,7 @@ export const useAppStore = defineStore('app', () => {
     syncPending,
     unlockOffline,
     discardPending,
+    confirmPending,
     session,
     login,
     logout,
