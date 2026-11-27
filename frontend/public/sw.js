@@ -1,4 +1,4 @@
-const CACHE = 'meteran-v1'
+const CACHE = 'meteran-v2'
 const SHELL = ['/', '/index.html', '/manifest.webmanifest', '/icon.svg']
 
 self.addEventListener('install', (event) => {
@@ -47,16 +47,23 @@ self.addEventListener('notificationclick', (event) => {
 self.addEventListener('fetch', (event) => {
   const { request } = event
   if (request.method !== 'GET') return
-  if (new URL(request.url).origin !== self.location.origin) return
+  const url = new URL(request.url)
+  if (url.origin !== self.location.origin) return
+  // API data is cached by the app in encrypted localStorage, never here.
+  if (url.pathname.startsWith('/api/')) return
 
   if (request.mode === 'navigate') {
     event.respondWith(
-      fetch(request)
-        .then((response) => {
-          caches.open(CACHE).then((cache) => cache.put('/index.html', response.clone()))
+      (async () => {
+        try {
+          const response = await fetch(request)
+          const cache = await caches.open(CACHE)
+          await cache.put('/index.html', response.clone())
           return response
-        })
-        .catch(() => caches.match('/index.html')),
+        } catch {
+          return (await caches.match(request)) || (await caches.match('/index.html'))
+        }
+      })(),
     )
     return
   }
