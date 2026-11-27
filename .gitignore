@@ -1,5 +1,6 @@
 node_modules/
 dist/
+.worktrees/
 # The placeholder keeps `//go:embed dist` compiling before the SPA is built.
 !backend/internal/web/
 !backend/internal/web/dist/
