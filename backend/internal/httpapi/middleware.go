@@ -2,7 +2,10 @@ package httpapi
 
 import (
 	"log"
+	"net"
 	"net/http"
+	"strings"
+	"sync"
 	"time"
 )
 
@@ -34,12 +37,86 @@ func (w *statusWriter) WriteHeader(code int) {
 
 func (w *statusWriter) Unwrap() http.ResponseWriter { return w.ResponseWriter }
 
+// logger only writes when something is wrong or slow. Logging every healthy
+// poll filled the container's JSON log with tens of megabytes of I/O.
 func logger(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		start := time.Now()
 		sw := &statusWriter{ResponseWriter: w, status: http.StatusOK}
 		next.ServeHTTP(sw, r)
-		log.Printf("%s %s %d %s", r.Method, r.URL.Path, sw.status, time.Since(start).Round(time.Millisecond))
+		elapsed := time.Since(start)
+		if sw.status >= 400 || elapsed > 500*time.Millisecond {
+			log.Printf("%s %s %d %s", r.Method, r.URL.Path, sw.status, elapsed.Round(time.Millisecond))
+		}
+	})
+}
+
+type rateBucket struct {
+	count int
+	reset time.Time
+}
+
+type rateLimiter struct {
+	mu        sync.Mutex
+	limit     int
+	window    time.Duration
+	buckets   map[string]rateBucket
+	lastClean time.Time
+}
+
+func newRateLimiter(limit int, window time.Duration) *rateLimiter {
+	return &rateLimiter{
+		limit:     limit,
+		window:    window,
+		buckets:   make(map[string]rateBucket),
+		lastClean: time.Now(),
+	}
+}
+
+func (rl *rateLimiter) allow(key string, now time.Time) bool {
+	rl.mu.Lock()
+	defer rl.mu.Unlock()
+	bucket, ok := rl.buckets[key]
+	if !ok || !now.Before(bucket.reset) {
+		bucket = rateBucket{reset: now.Add(rl.window)}
+	}
+	if bucket.count >= rl.limit {
+		return false
+	}
+	bucket.count++
+	rl.buckets[key] = bucket
+	if now.Sub(rl.lastClean) > rl.window {
+		for k, v := range rl.buckets {
+			if !now.Before(v.reset) {
+				delete(rl.buckets, k)
+			}
+		}
+		rl.lastClean = now
+	}
+	return true
+}
+
+func (rl *rateLimiter) wrap(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		key := r.Header.Get("X-Forwarded-For")
+		if comma := strings.IndexByte(key, ','); comma >= 0 {
+			key = key[:comma]
+		}
+		key = strings.TrimSpace(key)
+		if key == "" {
+			host, _, err := net.SplitHostPort(r.RemoteAddr)
+			if err == nil {
+				key = host
+			} else {
+				key = r.RemoteAddr
+			}
+		}
+		if !rl.allow(key, time.Now()) {
+			w.Header().Set("Retry-After", "60")
+			Fail(w, http.StatusTooManyRequests, CodeRateLimited, "Terlalu banyak permintaan. Coba lagi nanti.")
+			return
+		}
+		next.ServeHTTP(w, r)
 	})
 }
 

@@ -3,6 +3,7 @@ package httpapi
 import (
 	"net/http"
 	"sync"
+	"time"
 
 	"meteran/internal/store"
 )
@@ -83,7 +84,9 @@ func (s *Server) Handler() http.Handler {
 		}))
 	}
 
-	return recoverer(logger(mux))
+	// A single noisy client (or scanner) must not fill the log and starve the STB.
+	limiter := newRateLimiter(300, time.Minute)
+	return recoverer(logger(limiter.wrap(mux)))
 }
 
 func (s *Server) health(w http.ResponseWriter, r *http.Request) {
