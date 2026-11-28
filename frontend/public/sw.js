@@ -83,7 +83,7 @@ self.addEventListener('fetch', (event) => {
           .catch(() => null)
         const quick = await Promise.race([
           refresh,
-          new Promise<null>((resolve) => setTimeout(() => resolve(null), 1200)),
+          new Promise((resolve) => setTimeout(() => resolve(null), 1200)),
         ])
         if (quick) return quick
         if (cached) {
